@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useBoardStore } from './store'
 import Header from './components/Header'
 import Legend from './components/Legend'
+import FunnelBoard from './components/FunnelBoard'
 
 export default function App() {
   const tick = useBoardStore((s) => s.tick)
@@ -15,6 +16,7 @@ export default function App() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Header />
       <Legend />
+      <FunnelBoard />
     </div>
   )
 }
