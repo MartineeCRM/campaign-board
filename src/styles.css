@@ -1,0 +1,31 @@
+body {
+  margin: 0;
+  background: #f2f4f6;
+  font-family: Pretendard, -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  color: #191f28;
+}
+
+a {
+  color: #1a8a44;
+}
+a:hover {
+  color: #126b33;
+}
+
+input,
+select,
+button {
+  font-family: inherit;
+}
+
+@keyframes livePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(26, 154, 74, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(26, 154, 74, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(26, 154, 74, 0);
+  }
+}
