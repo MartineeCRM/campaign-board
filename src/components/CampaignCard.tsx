@@ -28,15 +28,44 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
   const isLive = k.status !== 'stopped'
   const width = cardWidth({ channel: k.channel, period: k.period, name: k.name }, expanded)
 
-  const open = () => {
-    if (mode === 'click' && !expanded) toggleOpen(k.id)
-    else selectCampaign(k.id)
-  }
+  const expand = () => toggleOpen(k.id)
 
   const collapse = (e: React.MouseEvent) => {
     e.stopPropagation()
     toggleOpen(k.id)
   }
+
+  // The card body is a drag handle (see useCardDrag/NodeColumn) — it has no
+  // click of its own. This chevron is the only way to open the detail
+  // panel, so dragging a card never fights with opening it.
+  const chevron = (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        selectCampaign(k.id)
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      title="상세보기"
+      aria-label="상세보기"
+      style={{
+        flex: 'none',
+        width: 24,
+        height: 24,
+        border: 0,
+        borderRadius: 999,
+        background: '#f2f4f6',
+        color: '#4e5968',
+        fontSize: 14,
+        fontWeight: 700,
+        lineHeight: 1,
+        cursor: 'pointer',
+        display: 'grid',
+        placeItems: 'center',
+      }}
+    >
+      ›
+    </button>
+  )
 
   const notch = (
     <>
@@ -79,7 +108,7 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
     return (
       <div style={{ position: 'relative', width }}>
         <div
-          onClick={open}
+          onClick={expand}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -110,6 +139,7 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
             {pct(k.convs, k.sent)}
           </div>
           <div style={{ fontSize: 10.5, color: '#6f6f6d' }}>{k.channel}</div>
+          {chevron}
         </div>
         {notch}
       </div>
@@ -119,14 +149,12 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
   return (
     <div style={{ position: 'relative', width }}>
       <div
-        onClick={open}
         style={{
           background: '#fff',
           borderRadius: 18,
           padding: '16px 18px 14px',
           boxShadow: '0 4px 18px rgba(0,20,60,.06)',
           boxSizing: 'border-box',
-          cursor: 'pointer',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
@@ -169,25 +197,27 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
           >
             {status.label}
           </div>
-          {mode === 'click' && (
-            <button
-              onClick={collapse}
-              style={{
-                marginLeft: 'auto',
-                fontSize: 11,
-                fontWeight: 600,
-                padding: '3px 8px',
-                border: 0,
-                borderRadius: 999,
-                background: '#f2f4f6',
-                color: '#8b95a1',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              접기
-            </button>
-          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {mode === 'click' && (
+              <button
+                onClick={collapse}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  border: 0,
+                  borderRadius: 999,
+                  background: '#f2f4f6',
+                  color: '#8b95a1',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                접기
+              </button>
+            )}
+            {chevron}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -276,7 +306,6 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
 
         {edit && (
           <div
-            onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             style={{
               marginTop: 12,

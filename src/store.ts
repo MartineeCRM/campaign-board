@@ -45,7 +45,9 @@ function withClient(state: BoardState, fn: (client: Client) => void): Pick<Board
 export interface BoardStore extends BoardState {
   currentClient: () => Client
   setMode: (mode: BoardState['mode']) => void
-  toggleEdit: () => void
+  enterEdit: () => void
+  confirmEdit: () => void
+  cancelEdit: () => void
   selectCampaign: (id: string | null) => void
   toggleOpen: (id: string) => void
   setClient: (id: string) => void
@@ -94,6 +96,12 @@ export function simulateTick(campaign: Campaign): Campaign {
   }
 }
 
+// Snapshot of `clients` taken when edit mode is entered, so "취소" can
+// discard every change made during the session. Not part of reactive
+// state — it never needs to trigger a render, only to be read/written by
+// the enter/confirm/cancel actions below.
+let editSnapshot: Client[] | null = null
+
 function findCampaignLocation(client: Client, campaignId: string) {
   for (let si = 0; si < client.stages.length; si++) {
     for (let ni = 0; ni < client.stages[si].nodes.length; ni++) {
@@ -121,12 +129,27 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   setMode: (mode) => set({ mode, open: {} }),
-  toggleEdit: () => set((s) => ({ edit: !s.edit })),
+  enterEdit: () => {
+    if (editSnapshot === null) editSnapshot = structuredClone(get().clients)
+    set({ edit: true })
+  },
+  confirmEdit: () => {
+    editSnapshot = null
+    set({ edit: false })
+  },
+  cancelEdit: () =>
+    set((s) => {
+      const clients = editSnapshot ?? s.clients
+      editSnapshot = null
+      const clientId = clients.some((c) => c.id === s.clientId) ? s.clientId : clients[0].id
+      return { clients, clientId, edit: false }
+    }),
   selectCampaign: (id) => set({ sel: id }),
   toggleOpen: (id) => set((s) => ({ open: { ...s.open, [id]: !s.open[id] } })),
 
   setClient: (id) => set({ clientId: id, open: {}, sel: null }),
   addClient: () => {
+    if (editSnapshot === null) editSnapshot = structuredClone(get().clients)
     const id = uid()
     const client: Client = {
       id,

@@ -19,7 +19,9 @@ export default function Header() {
   const addClient = useBoardStore((s) => s.addClient)
   const deleteClient = useBoardStore((s) => s.deleteClient)
   const setMode = useBoardStore((s) => s.setMode)
-  const toggleEdit = useBoardStore((s) => s.toggleEdit)
+  const enterEdit = useBoardStore((s) => s.enterEdit)
+  const confirmEdit = useBoardStore((s) => s.confirmEdit)
+  const cancelEdit = useBoardStore((s) => s.cancelEdit)
 
   const counts: Record<Status, number> = { alwayson: 0, experiment: 0, stopped: 0 }
   for (const stage of client.stages) {
@@ -140,8 +142,26 @@ export default function Header() {
           </button>
         </div>
 
+        {edit && (
+          <button
+            onClick={cancelEdit}
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              padding: '10px 16px',
+              border: '1px solid #e5e8eb',
+              borderRadius: 10,
+              color: '#4e5968',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            취소
+          </button>
+        )}
+
         <button
-          onClick={toggleEdit}
+          onClick={edit ? confirmEdit : enterEdit}
           style={{
             fontSize: 13,
             fontWeight: 700,

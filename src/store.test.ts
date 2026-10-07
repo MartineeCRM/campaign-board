@@ -293,3 +293,50 @@ describe('persistence', () => {
     expect(raw.clients).toHaveLength(state.clients.length)
   })
 })
+
+describe('edit mode snapshot/cancel', () => {
+  it('enterEdit turns edit mode on', () => {
+    useBoardStore.getState().enterEdit()
+    expect(useBoardStore.getState().edit).toBe(true)
+    // clears the module-level snapshot so later tests don't inherit it
+    useBoardStore.getState().confirmEdit()
+  })
+
+  it('confirmEdit keeps changes made during the edit session', () => {
+    useBoardStore.getState().enterEdit()
+    useBoardStore.getState().renameStage('s1', 'Renamed')
+    useBoardStore.getState().confirmEdit()
+    const state = useBoardStore.getState()
+    expect(state.edit).toBe(false)
+    expect(state.currentClient().stages[0].name).toBe('Renamed')
+  })
+
+  it('cancelEdit discards changes made since enterEdit', () => {
+    useBoardStore.getState().enterEdit()
+    useBoardStore.getState().renameStage('s1', 'Renamed')
+    useBoardStore.getState().addStage()
+    useBoardStore.getState().cancelEdit()
+    const state = useBoardStore.getState()
+    expect(state.edit).toBe(false)
+    expect(state.currentClient().stages).toHaveLength(2)
+    expect(state.currentClient().stages[0].name).toBe('Stage 1')
+  })
+
+  it('cancelEdit is a harmless no-op if edit mode was never entered', () => {
+    useBoardStore.getState().renameStage('s1', 'Renamed')
+    useBoardStore.getState().cancelEdit()
+    const state = useBoardStore.getState()
+    expect(state.edit).toBe(false)
+    expect(state.currentClient().stages[0].name).toBe('Renamed')
+  })
+
+  it('addClient during edit is undone by cancelEdit', () => {
+    useBoardStore.getState().enterEdit()
+    useBoardStore.getState().addClient()
+    const addedId = useBoardStore.getState().clientId
+    useBoardStore.getState().cancelEdit()
+    const state = useBoardStore.getState()
+    expect(state.clients.some((c) => c.id === addedId)).toBe(false)
+    expect(state.clientId).toBe('c1')
+  })
+})
