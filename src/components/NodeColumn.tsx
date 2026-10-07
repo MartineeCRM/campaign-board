@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useBoardStore } from '../store'
 import { useCardDrag } from '../hooks/useCardDrag'
 import { cardWidth } from '../utils/format'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from '../utils/geometry'
 import CampaignCard from './CampaignCard'
+import BranchPanel from './BranchPanel'
 import type { Campaign, FunnelNode, LineStyle, Stage } from '../types'
 
 // Matches an expanded card with the placeholder image; collapsed chips are
@@ -57,6 +59,8 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
   const insertNodeAfter = useBoardStore((s) => s.insertNodeAfter)
   const deleteNode = useBoardStore((s) => s.deleteNode)
   const addCampaign = useBoardStore((s) => s.addCampaign)
+  const [branchHover, setBranchHover] = useState(false)
+  const showBranches = branchHover || (edit && node.branches.length > 0)
 
   const top = node.campaigns.filter((c) => c.pos === 'top')
   const bottom = node.campaigns.filter((c) => c.pos === 'bottom')
@@ -97,6 +101,75 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
             border: `3px solid ${stage.color}`,
           }}
         />
+        {node.branches.length > 0 && !showBranches && (
+          <div
+            title={`분기 경로 ${node.branches.length}개 · 마우스를 올려보세요`}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: SPINE_Y - 22,
+              marginLeft: 6,
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              background: '#fff',
+              border: '1.5px solid #b0b8c1',
+              color: '#4e5968',
+              fontSize: 9,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            {node.branches.length}
+          </div>
+        )}
+
+        {/* Hover zone covering the dot + label; reveals the branch panel
+            without taking up layout space when collapsed. */}
+        <div
+          onMouseEnter={() => setBranchHover(true)}
+          onMouseLeave={() => setBranchHover(false)}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: SPINE_Y - 15,
+            width: 160,
+            height: 85,
+            marginLeft: -80,
+            zIndex: 4,
+            cursor: node.branches.length || edit ? 'pointer' : 'default',
+          }}
+        />
+        {showBranches && (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: SPINE_Y - 20,
+                width: 1,
+                height: 20,
+                background: '#b0b8c1',
+                transform: 'translateX(-50%)',
+                zIndex: 9,
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: SPINE_Y - 20,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 10,
+              }}
+            >
+              <BranchPanel parentNodeId={node.id} branches={node.branches} />
+            </div>
+          </>
+        )}
         <div
           style={{
             position: 'absolute',

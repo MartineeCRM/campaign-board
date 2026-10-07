@@ -54,7 +54,13 @@ function campaign(seedData: CampaignSeed, indexInZone: number): Campaign {
   }
 }
 
-function node(label: string, sub: string, line: LineStyle, campaigns: CampaignSeed[]): FunnelNode {
+function node(
+  label: string,
+  sub: string,
+  line: LineStyle,
+  campaigns: CampaignSeed[],
+  branches: FunnelNode[] = []
+): FunnelNode {
   const zoneCounts: Record<'top' | 'bottom', number> = { top: 0, bottom: 0 }
   return {
     id: uid(),
@@ -62,7 +68,12 @@ function node(label: string, sub: string, line: LineStyle, campaigns: CampaignSe
     sub,
     line,
     campaigns: campaigns.map((c) => campaign(c, zoneCounts[c.pos]++)),
+    branches,
   }
+}
+
+function branch(label: string, sub: string, line: LineStyle): FunnelNode {
+  return { id: uid(), label, sub, line, campaigns: [], branches: [] }
 }
 
 function stage(name: string, colorIndex: number, nodes: FunnelNode[]): Stage {
@@ -129,6 +140,9 @@ export function seed(): Client[] {
             cap: '7일 1회',
             link: 'https://dashboard.braze.com/',
           },
+        ], [
+          branch('가입 후 7일 미인증', 'verify_lapsed', 'dashed'),
+          branch('가입 폐기(탈퇴)', 'account_deleted', 'dotted'),
         ]),
       ]),
       stage('활성화', 1, [

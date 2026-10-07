@@ -29,7 +29,25 @@ export function loadInitialState(): Pick<BoardState, 'clients' | 'clientId' | 'm
 }
 
 function emptyNode(): FunnelNode {
-  return { id: uid(), label: '새 노드', sub: 'event_name', line: 'solid', campaigns: [] }
+  return { id: uid(), label: '새 노드', sub: 'event_name', line: 'solid', campaigns: [], branches: [] }
+}
+
+function emptyBranch(): FunnelNode {
+  return { id: uid(), label: '새 분기', sub: 'event_name', line: 'dashed', campaigns: [], branches: [] }
+}
+
+/** Finds the array a node (top-level or branch) lives in and its index
+ * there, so rename/line/delete actions work the same regardless of depth. */
+function findNodeContainer(client: Client, nodeId: string): { arr: FunnelNode[]; idx: number } | null {
+  for (const st of client.stages) {
+    const topIdx = st.nodes.findIndex((n) => n.id === nodeId)
+    if (topIdx !== -1) return { arr: st.nodes, idx: topIdx }
+    for (const n of st.nodes) {
+      const branchIdx = n.branches.findIndex((b) => b.id === nodeId)
+      if (branchIdx !== -1) return { arr: n.branches, idx: branchIdx }
+    }
+  }
+  return null
 }
 
 function withClient(state: BoardState, fn: (client: Client) => void): Pick<BoardState, 'clients'> {
@@ -65,6 +83,8 @@ export interface BoardStore extends BoardState {
   moveNode: (stageId: string, nodeId: string, dir: -1 | 1) => void
   insertNodeAfter: (nodeId: string) => void
   deleteNode: (nodeId: string) => void
+  addBranch: (parentNodeId: string) => void
+  deleteBranch: (parentNodeId: string, branchId: string) => void
   addCampaign: (nodeId: string, pos: CardPos) => void
   updateCampaign: (campaignId: string, patch: Partial<Campaign>) => void
   moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
@@ -220,25 +240,15 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   renameNode: (nodeId, patch) =>
     set((s) =>
       withClient(s, (c) => {
-        for (const st of c.stages) {
-          const n = st.nodes.find((x) => x.id === nodeId)
-          if (n) {
-            Object.assign(n, patch)
-            return
-          }
-        }
+        const loc = findNodeContainer(c, nodeId)
+        if (loc) Object.assign(loc.arr[loc.idx], patch)
       })
     ),
   setNodeLine: (nodeId, line) =>
     set((s) =>
       withClient(s, (c) => {
-        for (const st of c.stages) {
-          const n = st.nodes.find((x) => x.id === nodeId)
-          if (n) {
-            n.line = line
-            return
-          }
-        }
+        const loc = findNodeContainer(c, nodeId)
+        if (loc) loc.arr[loc.idx].line = line
       })
     ),
   moveNode: (stageId, nodeId, dir) =>
@@ -283,10 +293,29 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   deleteNode: (nodeId) =>
     set((s) =>
       withClient(s, (c) => {
+        const loc = findNodeContainer(c, nodeId)
+        if (loc) loc.arr.splice(loc.idx, 1)
+      })
+    ),
+  addBranch: (parentNodeId) =>
+    set((s) =>
+      withClient(s, (c) => {
         for (const st of c.stages) {
-          const ni = st.nodes.findIndex((x) => x.id === nodeId)
-          if (ni !== -1) {
-            st.nodes.splice(ni, 1)
+          const parent = st.nodes.find((n) => n.id === parentNodeId)
+          if (parent) {
+            parent.branches.push(emptyBranch())
+            return
+          }
+        }
+      })
+    ),
+  deleteBranch: (parentNodeId, branchId) =>
+    set((s) =>
+      withClient(s, (c) => {
+        for (const st of c.stages) {
+          const parent = st.nodes.find((n) => n.id === parentNodeId)
+          if (parent) {
+            parent.branches = parent.branches.filter((b) => b.id !== branchId)
             return
           }
         }

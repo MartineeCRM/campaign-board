@@ -42,6 +42,7 @@ function fixtureClient(): Client {
                 link: '',
               },
             ],
+            branches: [],
           },
         ],
       },
@@ -49,7 +50,7 @@ function fixtureClient(): Client {
         id: 's2',
         name: 'Stage 2',
         color: STAGE_PALETTE[1],
-        nodes: [{ id: 'n2', label: 'Node 2', sub: 'evt_2', line: 'solid', campaigns: [] }],
+        nodes: [{ id: 'n2', label: 'Node 2', sub: 'evt_2', line: 'solid', campaigns: [], branches: [] }],
       },
     ],
   }
@@ -196,6 +197,51 @@ describe('node actions', () => {
     const stages = useBoardStore.getState().currentClient().stages
     expect(stages[0].nodes).toHaveLength(0)
     expect(stages[1].nodes.map((n) => n.id)).toEqual(['n1', 'n2'])
+  })
+})
+
+describe('branch actions', () => {
+  it('addBranch appends a new branch onto the parent node', () => {
+    useBoardStore.getState().addBranch('n1')
+    const node = useBoardStore.getState().currentClient().stages[0].nodes[0]
+    expect(node.branches).toHaveLength(1)
+    expect(node.branches[0].label).toBe('새 분기')
+    expect(node.branches[0].line).toBe('dashed')
+  })
+
+  it('renameNode also works on a branch (found by searching parent nodes)', () => {
+    useBoardStore.getState().addBranch('n1')
+    const branchId = useBoardStore.getState().currentClient().stages[0].nodes[0].branches[0].id
+    useBoardStore.getState().renameNode(branchId, { label: 'Branch Renamed' })
+    const node = useBoardStore.getState().currentClient().stages[0].nodes[0]
+    expect(node.branches[0].label).toBe('Branch Renamed')
+    // the parent node itself is untouched
+    expect(node.label).toBe('Node 1')
+  })
+
+  it('setNodeLine also works on a branch', () => {
+    useBoardStore.getState().addBranch('n1')
+    const branchId = useBoardStore.getState().currentClient().stages[0].nodes[0].branches[0].id
+    useBoardStore.getState().setNodeLine(branchId, 'dotted')
+    expect(useBoardStore.getState().currentClient().stages[0].nodes[0].branches[0].line).toBe('dotted')
+  })
+
+  it('deleteBranch removes only the targeted branch', () => {
+    useBoardStore.getState().addBranch('n1')
+    useBoardStore.getState().addBranch('n1')
+    const branches = useBoardStore.getState().currentClient().stages[0].nodes[0].branches
+    useBoardStore.getState().deleteBranch('n1', branches[0].id)
+    const after = useBoardStore.getState().currentClient().stages[0].nodes[0].branches
+    expect(after).toHaveLength(1)
+    expect(after[0].id).toBe(branches[1].id)
+  })
+
+  it('deleteNode on a top-level node does not touch a different node with the same-shaped branches', () => {
+    useBoardStore.getState().addBranch('n1')
+    useBoardStore.getState().deleteNode('n2')
+    const stages = useBoardStore.getState().currentClient().stages
+    expect(stages[0].nodes[0].branches).toHaveLength(1)
+    expect(stages[1].nodes).toHaveLength(0)
   })
 })
 

@@ -34,6 +34,12 @@ export interface FunnelNode {
   sub: string
   line: LineStyle
   campaigns: Campaign[]
+  // Alternate paths that fork off this node (e.g. a dashed "선택 경로" or a
+  // dotted "이탈/복귀" path alongside the solid main sequence). Revealed on
+  // hover rather than shown inline, so they don't visually clutter the main
+  // funnel. A branch is itself a FunnelNode, but only one level is rendered
+  // — a branch's own `branches` is always empty in the UI.
+  branches: FunnelNode[]
 }
 
 export interface Stage {
