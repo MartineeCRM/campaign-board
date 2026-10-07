@@ -1,6 +1,6 @@
 // src/store.test.ts
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useBoardStore, STAGE_PALETTE, saveState, simulateTick } from './store'
+import { useBoardStore, STAGE_PALETTE, saveState, simulateTick, normalizeClient } from './store'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from './utils/geometry'
 import type { Client } from './types'
 
@@ -337,6 +337,36 @@ describe('persistence', () => {
     expect(raw.clientId).toBe(state.clientId)
     expect(raw.mode).toBe(state.mode)
     expect(raw.clients).toHaveLength(state.clients.length)
+  })
+})
+
+describe('normalizeClient', () => {
+  it('fills in a missing branches array on an old-shaped node', () => {
+    const old = fixtureClient()
+    // simulate data saved before `branches` existed on FunnelNode
+    // @ts-expect-error intentionally constructing a pre-migration shape
+    delete old.stages[0].nodes[0].branches
+    const normalized = normalizeClient(old)
+    expect(normalized.stages[0].nodes[0].branches).toEqual([])
+  })
+
+  it('fills in missing branches on a nested branch too', () => {
+    const old = fixtureClient()
+    old.stages[0].nodes[0].branches = [
+      // @ts-expect-error intentionally omitting branches on the branch itself
+      { id: 'b1', label: 'Old Branch', sub: 'evt', line: 'dashed', campaigns: [] },
+    ]
+    const normalized = normalizeClient(old)
+    expect(normalized.stages[0].nodes[0].branches[0].branches).toEqual([])
+  })
+
+  it('leaves already-current data untouched', () => {
+    const current = fixtureClient()
+    current.stages[0].nodes[0].branches = [
+      { id: 'b1', label: 'Branch', sub: 'evt', line: 'dashed', campaigns: [], branches: [] },
+    ]
+    const normalized = normalizeClient(current)
+    expect(normalized).toEqual(current)
   })
 })
 

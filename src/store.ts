@@ -8,15 +8,40 @@ import type { Campaign, CardPos } from './types'
 
 export const STAGE_PALETTE = SEED_PALETTE
 
+// Fills in defaults for fields added to the schema after some users already
+// had data saved in localStorage — e.g. `branches` didn't exist until a
+// later release, so data saved before that has nodes with no `branches` at
+// all. Reading `undefined.length` on those nodes crashed the whole render
+// (a blank page), not just the one node. Every load goes through this, so
+// old saved data self-heals instead of needing a manual "clear site data."
+export function normalizeNode(node: FunnelNode): FunnelNode {
+  return {
+    ...node,
+    campaigns: node.campaigns ?? [],
+    branches: (node.branches ?? []).map(normalizeNode),
+  }
+}
+
+export function normalizeClient(client: Client): Client {
+  return {
+    ...client,
+    stages: client.stages.map((stage) => ({
+      ...stage,
+      nodes: stage.nodes.map(normalizeNode),
+    })),
+  }
+}
+
 export function loadInitialState(): Pick<BoardState, 'clients' | 'clientId' | 'mode'> {
   try {
     const raw = localStorage.getItem('funnelBoard.v1')
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed?.clients?.length) {
+        const clients = (parsed.clients as Client[]).map(normalizeClient)
         return {
-          clients: parsed.clients,
-          clientId: parsed.clientId ?? parsed.clients[0].id,
+          clients,
+          clientId: parsed.clientId ?? clients[0].id,
           mode: parsed.mode ?? 'full',
         }
       }
