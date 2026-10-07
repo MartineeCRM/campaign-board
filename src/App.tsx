@@ -3,6 +3,7 @@ import { useBoardStore } from './store'
 import Header from './components/Header'
 import Legend from './components/Legend'
 import FunnelBoard from './components/FunnelBoard'
+import DetailPanel from './components/DetailPanel'
 
 export default function App() {
   const tick = useBoardStore((s) => s.tick)
@@ -17,6 +18,7 @@ export default function App() {
       <Header />
       <Legend />
       <FunnelBoard />
+      <DetailPanel />
     </div>
   )
 }
