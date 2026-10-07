@@ -1,4 +1,5 @@
 import { useBoardStore } from '../store'
+import { SPINE_Y, TRACK_HEIGHT } from '../utils/geometry'
 import type { Stage } from '../types'
 
 export default function StageColumn({ stage }: { stage: Stage }) {
@@ -10,11 +11,19 @@ export default function StageColumn({ stage }: { stage: Stage }) {
   const deleteStage = useBoardStore((s) => s.deleteStage)
 
   return (
-    <div style={{ gridRow: '1 / 4', display: 'grid', gridTemplateRows: 'subgrid', minWidth: 110 }}>
-      <div />
-      <div style={{ position: 'relative' }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, top: 27, borderTop: `3px solid ${stage.color}` }} />
-        <div style={{ position: 'absolute', left: 0, right: 0, top: 15, display: 'flex', justifyContent: 'center', padding: '0 14px' }}>
+    <div style={{ flex: '0 0 auto', minWidth: 110, padding: '0 14px', boxSizing: 'border-box' }}>
+      <div style={{ position: 'relative', height: TRACK_HEIGHT }}>
+        <div style={{ position: 'absolute', left: -14, right: -14, top: SPINE_Y, borderTop: `3px solid ${stage.color}` }} />
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: SPINE_Y - 15,
+            display: 'flex',
+            justifyContent: 'center',
+          }}
+        >
           {edit ? (
             <input
               value={stage.name}
@@ -48,8 +57,8 @@ export default function StageColumn({ stage }: { stage: Stage }) {
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
-        {edit && (
+      {edit && (
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, width: 96 }}>
             <button onClick={() => moveStage(stage.id, -1)} style={smallBtn}>
               ◀
@@ -70,8 +79,8 @@ export default function StageColumn({ stage }: { stage: Stage }) {
               단계 삭제
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -5,7 +5,11 @@ import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from '../utils/geometry'
 import CampaignCard from './CampaignCard'
 import type { Campaign, FunnelNode, LineStyle, Stage } from '../types'
 
-const CARD_HEIGHT_ESTIMATE = 160
+// Matches an expanded card with the placeholder image; collapsed chips are
+// much shorter. Only used to clamp drag bounds, not to measure real layout —
+// a card with a tall custom image can still visually extend past this.
+const EXPANDED_HEIGHT_ESTIMATE = 270
+const COLLAPSED_HEIGHT_ESTIMATE = 48
 const LINE_OPTIONS: { value: LineStyle; label: string }[] = [
   { value: 'solid', label: '실선' },
   { value: 'dashed', label: '점선' },
@@ -21,7 +25,7 @@ interface DraggableCardProps {
 
 function DraggableCard({ campaign, expanded, notchTop, notchBottom }: DraggableCardProps) {
   const width = cardWidth({ channel: campaign.channel, period: campaign.period, name: campaign.name }, expanded)
-  const height = CARD_HEIGHT_ESTIMATE
+  const height = expanded ? EXPANDED_HEIGHT_ESTIMATE : COLLAPSED_HEIGHT_ESTIMATE
   const drag = useCardDrag(campaign.id, campaign.x, campaign.y, width, height, TRACK_WIDTH)
 
   return (
@@ -64,9 +68,7 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
   return (
     <div
       style={{
-        gridRow: '1 / 4',
-        display: 'grid',
-        gridTemplateRows: 'subgrid',
+        flex: '0 0 auto',
         minWidth: 284,
         padding: '0 16px',
         boxSizing: 'border-box',

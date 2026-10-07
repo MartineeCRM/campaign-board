@@ -1,6 +1,7 @@
 // src/store.test.ts
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useBoardStore, STAGE_PALETTE, saveState, simulateTick } from './store'
+import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from './utils/geometry'
 import type { Client } from './types'
 
 function fixtureClient(): Client {
@@ -216,18 +217,25 @@ describe('campaign actions', () => {
   })
 
   it('moveCampaignTo clamps position and flips pos to bottom when dragged past the spine', () => {
-    useBoardStore.getState().moveCampaignTo('k1', 20, 300, 260, 160, 400)
+    const belowSpine = SPINE_Y + 70
+    useBoardStore.getState().moveCampaignTo('k1', 20, belowSpine, 260, 160, TRACK_WIDTH)
     const campaign = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
     expect(campaign.pos).toBe('bottom')
     expect(campaign.x).toBe(20)
-    expect(campaign.y).toBe(300)
+    expect(campaign.y).toBe(belowSpine)
   })
 
   it('moveCampaignTo clamps x/y to the track bounds', () => {
-    useBoardStore.getState().moveCampaignTo('k1', 99999, -500, 260, 160, 400)
+    useBoardStore.getState().moveCampaignTo('k1', 99999, -500, 260, 160, TRACK_WIDTH)
     const campaign = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
-    expect(campaign.x).toBe(400 - 260)
+    expect(campaign.x).toBe(TRACK_WIDTH - 260)
     expect(campaign.y).toBe(0)
+  })
+
+  it('moveCampaignTo clamps y so a card cannot leave the bottom of the track', () => {
+    useBoardStore.getState().moveCampaignTo('k1', 20, 999999, 260, 160, TRACK_WIDTH)
+    const campaign = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
+    expect(campaign.y).toBe(TRACK_HEIGHT - 160)
   })
 
   it('deleteCampaign removes the campaign by id', () => {

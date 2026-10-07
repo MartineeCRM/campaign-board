@@ -11,10 +11,8 @@ export default function FunnelBoard() {
     <div style={{ overflowX: 'auto', padding: '28px 48px 72px', flex: 1 }}>
       <div
         style={{
-          display: 'grid',
-          gridTemplateRows: 'minmax(150px,auto) 100px minmax(150px,auto)',
-          gridAutoFlow: 'column',
-          gridAutoColumns: 'max-content',
+          display: 'flex',
+          alignItems: 'flex-start',
           width: 'max-content',
           minWidth: '100%',
         }}

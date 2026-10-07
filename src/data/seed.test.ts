@@ -1,6 +1,7 @@
 // src/data/seed.test.ts
 import { describe, expect, it } from 'vitest'
 import { seed } from './seed'
+import { SPINE_Y } from '../utils/geometry'
 
 describe('seed', () => {
   it('returns two clients', () => {
@@ -37,8 +38,8 @@ describe('seed', () => {
       for (const stage of client.stages) {
         for (const node of stage.nodes) {
           for (const campaign of node.campaigns) {
-            if (campaign.pos === 'top') expect(campaign.y).toBeLessThan(230)
-            else expect(campaign.y).toBeGreaterThanOrEqual(230)
+            if (campaign.pos === 'top') expect(campaign.y).toBeLessThan(SPINE_Y)
+            else expect(campaign.y).toBeGreaterThanOrEqual(SPINE_Y)
           }
         }
       }

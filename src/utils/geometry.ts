@@ -3,8 +3,12 @@
 // absolutely positioned (x, y) inside the track instead of the handoff's
 // button-ordered top/bottom lists, per the "freeform placement" requirement.
 export const TRACK_WIDTH = 400
-export const TRACK_HEIGHT = 460
-export const SPINE_Y = 230
+// An expanded campaign card (the README's design, with the placeholder
+// image block) renders at ~266px tall. TRACK_HEIGHT and SPINE_Y are sized
+// to comfortably stack two such cards on each side of the spine, with
+// clearance so cards never cover the node's own label text.
+export const TRACK_HEIGHT = 1250
+export const SPINE_Y = 600
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
