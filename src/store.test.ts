@@ -1,6 +1,6 @@
 // src/store.test.ts
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useBoardStore, STAGE_PALETTE } from './store'
+import { useBoardStore, STAGE_PALETTE, saveState, simulateTick } from './store'
 import type { Client } from './types'
 
 function fixtureClient(): Client {
@@ -195,5 +195,93 @@ describe('node actions', () => {
     const stages = useBoardStore.getState().currentClient().stages
     expect(stages[0].nodes).toHaveLength(0)
     expect(stages[1].nodes.map((n) => n.id)).toEqual(['n1', 'n2'])
+  })
+})
+
+describe('campaign actions', () => {
+  it('addCampaign appends a campaign positioned in the requested zone', () => {
+    useBoardStore.getState().addCampaign('n1', 'bottom')
+    const node = useBoardStore.getState().currentClient().stages[0].nodes[0]
+    expect(node.campaigns).toHaveLength(2)
+    const added = node.campaigns[1]
+    expect(added.pos).toBe('bottom')
+    expect(added.y).toBeGreaterThanOrEqual(230)
+  })
+
+  it('updateCampaign patches fields by id, regardless of which stage/node it is in', () => {
+    useBoardStore.getState().updateCampaign('k1', { name: 'Renamed Campaign', status: 'stopped' })
+    const campaign = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
+    expect(campaign.name).toBe('Renamed Campaign')
+    expect(campaign.status).toBe('stopped')
+  })
+
+  it('moveCampaignTo clamps position and flips pos to bottom when dragged past the spine', () => {
+    useBoardStore.getState().moveCampaignTo('k1', 20, 300, 260, 160, 400)
+    const campaign = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
+    expect(campaign.pos).toBe('bottom')
+    expect(campaign.x).toBe(20)
+    expect(campaign.y).toBe(300)
+  })
+
+  it('moveCampaignTo clamps x/y to the track bounds', () => {
+    useBoardStore.getState().moveCampaignTo('k1', 99999, -500, 260, 160, 400)
+    const campaign = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
+    expect(campaign.x).toBe(400 - 260)
+    expect(campaign.y).toBe(0)
+  })
+
+  it('deleteCampaign removes the campaign by id', () => {
+    useBoardStore.getState().deleteCampaign('k1')
+    expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns).toHaveLength(0)
+  })
+})
+
+describe('simulateTick', () => {
+  it('leaves a stopped campaign untouched', () => {
+    const stopped = fixtureClient().stages[0].nodes[0].campaigns[0]
+    stopped.status = 'stopped'
+    expect(simulateTick(stopped)).toEqual(stopped)
+  })
+
+  it('increases sent by between 3 and 38 for a non-stopped campaign', () => {
+    const campaign = fixtureClient().stages[0].nodes[0].campaigns[0]
+    const result = simulateTick(campaign)
+    const delta = result.sent - campaign.sent
+    expect(delta).toBeGreaterThanOrEqual(3)
+    expect(delta).toBeLessThanOrEqual(38)
+  })
+
+  it('never decreases opens, clicks or convs', () => {
+    const campaign = fixtureClient().stages[0].nodes[0].campaigns[0]
+    const result = simulateTick(campaign)
+    expect(result.opens).toBeGreaterThanOrEqual(campaign.opens)
+    expect(result.clicks).toBeGreaterThanOrEqual(campaign.clicks)
+    expect(result.convs).toBeGreaterThanOrEqual(campaign.convs)
+  })
+})
+
+describe('tick action', () => {
+  it('advances sync and increments sent for the current client only', () => {
+    useBoardStore.setState((s) => ({
+      clients: [...s.clients, { ...fixtureClient(), id: 'c2', name: 'Other' }],
+    }))
+    const before = useBoardStore.getState().clients[1].stages[0].nodes[0].campaigns[0].sent
+    useBoardStore.getState().tick()
+    const state = useBoardStore.getState()
+    expect(state.sync).toBeGreaterThan(0)
+    expect(state.currentClient().stages[0].nodes[0].campaigns[0].sent).toBeGreaterThan(100)
+    // the client that is NOT selected must be untouched
+    expect(state.clients[1].stages[0].nodes[0].campaigns[0].sent).toBe(before)
+  })
+})
+
+describe('persistence', () => {
+  it('saveState writes clients, clientId and mode under funnelBoard.v1', () => {
+    const state = useBoardStore.getState()
+    saveState(state)
+    const raw = JSON.parse(localStorage.getItem('funnelBoard.v1')!)
+    expect(raw.clientId).toBe(state.clientId)
+    expect(raw.mode).toBe(state.mode)
+    expect(raw.clients).toHaveLength(state.clients.length)
   })
 })
