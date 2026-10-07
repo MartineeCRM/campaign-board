@@ -127,49 +127,34 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
           </div>
         )}
 
-        {/* Hover zone covering the dot + label; reveals the branch panel
-            without taking up layout space when collapsed. */}
+        {/* One contiguous hoverable column: panel (if shown) + connector +
+            a spacer over the dot/label. Moving the mouse from the dot up
+            into the panel never crosses a gap between two separately
+            hoverable elements — it's all one element, so the panel can't
+            vanish out from under the cursor on the way to it. */}
         <div
           onMouseEnter={() => setBranchHover(true)}
           onMouseLeave={() => setBranchHover(false)}
           style={{
             position: 'absolute',
             left: '50%',
-            top: SPINE_Y - 15,
-            width: 160,
-            height: 85,
-            marginLeft: -80,
+            bottom: TRACK_HEIGHT - (SPINE_Y + 70),
+            transform: 'translateX(-50%)',
             zIndex: 4,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             cursor: node.branches.length || edit ? 'pointer' : 'default',
           }}
-        />
-        {showBranches && (
-          <>
-            <div
-              style={{
-                position: 'absolute',
-                left: '50%',
-                top: SPINE_Y - 20,
-                width: 1,
-                height: 20,
-                background: '#b0b8c1',
-                transform: 'translateX(-50%)',
-                zIndex: 9,
-              }}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                left: '50%',
-                top: SPINE_Y - 20,
-                transform: 'translate(-50%, -100%)',
-                zIndex: 10,
-              }}
-            >
+        >
+          {showBranches && (
+            <>
               <BranchPanel parentNodeId={node.id} branches={node.branches} />
-            </div>
-          </>
-        )}
+              <div style={{ width: 1, height: 20, background: '#b0b8c1' }} />
+            </>
+          )}
+          <div style={{ width: 160, height: 85 }} />
+        </div>
         <div
           style={{
             position: 'absolute',
