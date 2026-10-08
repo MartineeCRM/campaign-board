@@ -40,7 +40,7 @@ export default function Login() {
         }}
       >
         <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-.02em', marginBottom: 4 }}>
-          Campaign Funnel Board
+          Campaign Board
         </div>
         <input
           type="email"
