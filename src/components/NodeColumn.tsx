@@ -1,10 +1,9 @@
-import { useState } from 'react'
 import { useBoardStore } from '../store'
 import { useCardDrag } from '../hooks/useCardDrag'
 import { cardWidth } from '../utils/format'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from '../utils/geometry'
 import CampaignCard from './CampaignCard'
-import BranchPanel from './BranchPanel'
+import BranchNode, { branchOffset } from './BranchNode'
 import type { Campaign, FunnelNode, LineStyle, Stage } from '../types'
 
 // Matches an expanded card with the placeholder image; collapsed chips are
@@ -59,8 +58,7 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
   const insertNodeAfter = useBoardStore((s) => s.insertNodeAfter)
   const deleteNode = useBoardStore((s) => s.deleteNode)
   const addCampaign = useBoardStore((s) => s.addCampaign)
-  const [branchHover, setBranchHover] = useState(false)
-  const showBranches = branchHover || (edit && node.branches.length > 0)
+  const addBranch = useBoardStore((s) => s.addBranch)
 
   const top = node.campaigns.filter((c) => c.pos === 'top')
   const bottom = node.campaigns.filter((c) => c.pos === 'bottom')
@@ -101,59 +99,59 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
             border: `3px solid ${stage.color}`,
           }}
         />
-        {node.branches.length > 0 && !showBranches && (
-          <div
-            title={`분기 경로 ${node.branches.length}개 · 마우스를 올려보세요`}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: SPINE_Y - 22,
-              marginLeft: 6,
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              background: '#fff',
-              border: '1.5px solid #b0b8c1',
-              color: '#4e5968',
-              fontSize: 9,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              pointerEvents: 'none',
-            }}
-          >
-            {node.branches.length}
-          </div>
-        )}
-
-        {/* One contiguous hoverable column: panel (if shown) + connector +
-            a spacer over the dot/label. Moving the mouse from the dot up
-            into the panel never crosses a gap between two separately
-            hoverable elements — it's all one element, so the panel can't
-            vanish out from under the cursor on the way to it. */}
-        <div
-          onMouseEnter={() => setBranchHover(true)}
-          onMouseLeave={() => setBranchHover(false)}
-          style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: TRACK_HEIGHT - (SPINE_Y + 70),
-            transform: 'translateX(-50%)',
-            zIndex: 4,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            cursor: node.branches.length || edit ? 'pointer' : 'default',
-          }}
-        >
-          {showBranches && (
-            <>
-              <BranchPanel parentNodeId={node.id} branches={node.branches} />
-              <div style={{ width: 1, height: 20, background: '#b0b8c1' }} />
-            </>
-          )}
-          <div style={{ width: 160, height: 85 }} />
+        {/* Branches fork visibly off the dot — a real diverging line to a
+            small node box, always shown, the same way a flowchart draws a
+            fork. Anchored at the dot itself (0,0 here) so each branch's
+            connector and box only need to know their own fan-out offset. */}
+        <div style={{ position: 'absolute', left: '50%', top: SPINE_Y, width: 0, height: 0 }}>
+          {node.branches.map((b, i) => {
+            const { dx, dy } = branchOffset(i)
+            return <BranchNode key={b.id} parentNodeId={node.id} branch={b} dx={dx} dy={dy} color={stage.color} />
+          })}
+          {edit &&
+            (() => {
+              const { dx, dy } = branchOffset(node.branches.length)
+              const length = Math.sqrt(dx * dx + dy * dy)
+              const angle = (Math.atan2(dy, dx) * 180) / Math.PI
+              return (
+                <>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      width: length,
+                      height: 0,
+                      borderTop: '2px dashed #b0b8c1',
+                      transformOrigin: '0 0',
+                      transform: `rotate(${angle}deg)`,
+                      zIndex: 2,
+                    }}
+                  />
+                  <button
+                    onClick={() => addBranch(node.id)}
+                    style={{
+                      position: 'absolute',
+                      left: dx,
+                      top: dy,
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 3,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '6px 10px',
+                      border: '1.5px dashed #b0b8c1',
+                      background: '#fff',
+                      color: '#4e5968',
+                      borderRadius: 999,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    + 분기
+                  </button>
+                </>
+              )
+            })()}
         </div>
         <div
           style={{
