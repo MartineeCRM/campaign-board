@@ -56,31 +56,43 @@ export default function StageColumn({ stage }: { stage: Stage }) {
             </div>
           )}
         </div>
-      </div>
-      {edit && (
-        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, width: 96 }}>
-            <button onClick={() => moveStage(stage.id, -1)} style={smallBtn}>
-              ◀
-            </button>
-            <button onClick={() => moveStage(stage.id, 1)} style={smallBtn}>
-              ▶
-            </button>
-            <button onClick={() => cycleStageColor(stage.id)} style={{ ...smallBtn, gridColumn: '1 / 3' }}>
-              색상 변경
-            </button>
-            <button onClick={() => addNode(stage.id)} style={{ ...smallBtn, gridColumn: '1 / 3' }}>
-              + 노드
-            </button>
-            <button
-              onClick={() => deleteStage(stage.id)}
-              style={{ ...smallBtn, gridColumn: '1 / 3', color: '#f04452', background: '#fff0f1' }}
-            >
-              단계 삭제
-            </button>
+
+        {/* Positioned right under the pill, not after the whole
+            (tall, drag-canvas-sized) track — otherwise it sits far below
+            with nothing else in view, looking like orphaned buttons. */}
+        {edit && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: SPINE_Y + 20,
+              transform: 'translateX(-50%)',
+              zIndex: 6,
+            }}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, width: 96 }}>
+              <button onClick={() => moveStage(stage.id, -1)} style={smallBtn}>
+                ◀
+              </button>
+              <button onClick={() => moveStage(stage.id, 1)} style={smallBtn}>
+                ▶
+              </button>
+              <button onClick={() => cycleStageColor(stage.id)} style={{ ...smallBtn, gridColumn: '1 / 3' }}>
+                색상 변경
+              </button>
+              <button onClick={() => addNode(stage.id)} style={{ ...smallBtn, gridColumn: '1 / 3' }}>
+                + 노드
+              </button>
+              <button
+                onClick={() => deleteStage(stage.id)}
+                style={{ ...smallBtn, gridColumn: '1 / 3', color: '#f04452', background: '#fff0f1' }}
+              >
+                단계 삭제
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

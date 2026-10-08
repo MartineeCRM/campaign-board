@@ -252,23 +252,30 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
             notchBottom={false}
           />
         ))}
-      </div>
 
-      {edit && (
-        <div
-          style={{
-            width: 252,
-            boxSizing: 'border-box',
-            borderRadius: 14,
-            padding: 10,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            background: '#fff',
-            boxShadow: '0 2px 12px rgba(0,20,60,.06)',
-            margin: '8px auto 0',
-          }}
-        >
+        {/* Positioned right under the label, not after the whole (tall,
+            drag-canvas-sized) track — it used to sit in normal flow after
+            the 1250px track, which put it far below the node with nothing
+            else in view, looking like orphaned, unexplained buttons. */}
+        {edit && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: SPINE_Y + 65,
+              transform: 'translateX(-50%)',
+              zIndex: 6,
+              width: 252,
+              boxSizing: 'border-box',
+              borderRadius: 14,
+              padding: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              background: '#fff',
+              boxShadow: '0 6px 20px rgba(0,20,60,.14)',
+            }}
+          >
           <div style={{ display: 'flex', gap: 4 }}>
             {LINE_OPTIONS.map((opt) => {
               const active = node.line === opt.value
@@ -327,6 +334,7 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }
