@@ -1,6 +1,6 @@
 // src/store.test.ts
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useBoardStore, STAGE_PALETTE, saveState, simulateTick, normalizeClient } from './store'
+import { useBoardStore, STAGE_PALETTE, saveState, normalizeClient } from './store'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from './utils/geometry'
 import type { Client } from './types'
 
@@ -241,45 +241,6 @@ describe('campaign actions', () => {
   it('deleteCampaign removes the campaign by id', () => {
     useBoardStore.getState().deleteCampaign('k1')
     expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns).toHaveLength(0)
-  })
-})
-
-describe('simulateTick', () => {
-  it('leaves a stopped campaign untouched', () => {
-    const stopped = fixtureClient().stages[0].nodes[0].campaigns[0]
-    stopped.status = 'stopped'
-    expect(simulateTick(stopped)).toEqual(stopped)
-  })
-
-  it('increases sent by between 3 and 38 for a non-stopped campaign', () => {
-    const campaign = fixtureClient().stages[0].nodes[0].campaigns[0]
-    const result = simulateTick(campaign)
-    const delta = result.sent - campaign.sent
-    expect(delta).toBeGreaterThanOrEqual(3)
-    expect(delta).toBeLessThanOrEqual(38)
-  })
-
-  it('never decreases opens, clicks or convs', () => {
-    const campaign = fixtureClient().stages[0].nodes[0].campaigns[0]
-    const result = simulateTick(campaign)
-    expect(result.opens).toBeGreaterThanOrEqual(campaign.opens)
-    expect(result.clicks).toBeGreaterThanOrEqual(campaign.clicks)
-    expect(result.convs).toBeGreaterThanOrEqual(campaign.convs)
-  })
-})
-
-describe('tick action', () => {
-  it('advances sync and increments sent for the current client only', () => {
-    useBoardStore.setState((s) => ({
-      clients: [...s.clients, { ...fixtureClient(), id: 'c2', name: 'Other' }],
-    }))
-    const before = useBoardStore.getState().clients[1].stages[0].nodes[0].campaigns[0].sent
-    useBoardStore.getState().tick()
-    const state = useBoardStore.getState()
-    expect(state.sync).toBeGreaterThan(0)
-    expect(state.currentClient().stages[0].nodes[0].campaigns[0].sent).toBeGreaterThan(100)
-    // the client that is NOT selected must be untouched
-    expect(state.clients[1].stages[0].nodes[0].campaigns[0].sent).toBe(before)
   })
 })
 

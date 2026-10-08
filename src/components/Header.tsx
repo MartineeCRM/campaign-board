@@ -1,4 +1,5 @@
 import { useBoardStore } from '../store'
+import { supabase } from '../supabase'
 import type { Status } from '../types'
 
 const STATUS_META: Record<Status, { label: string; color: string }> = {
@@ -193,6 +194,23 @@ export default function Header() {
             고객사 삭제
           </button>
         )}
+
+        <button
+          onClick={() => supabase.auth.signOut()}
+          title="로그아웃"
+          style={{
+            fontSize: 12,
+            padding: '7px 10px',
+            border: '1px solid #e5e8eb',
+            background: '#fff',
+            color: '#8b95a1',
+            fontWeight: 600,
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+        >
+          로그아웃
+        </button>
       </div>
     </header>
   )

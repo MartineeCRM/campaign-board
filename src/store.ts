@@ -91,7 +91,6 @@ export interface BoardStore extends BoardState {
   updateCampaign: (campaignId: string, patch: Partial<Campaign>) => void
   moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
   deleteCampaign: (campaignId: string) => void
-  tick: () => void
 }
 
 export function saveState(state: Pick<BoardState, 'clients' | 'clientId' | 'mode'>): void {
@@ -102,19 +101,6 @@ export function saveState(state: Pick<BoardState, 'clients' | 'clientId' | 'mode
     )
   } catch {
     // storage unavailable (private browsing, quota) — simulated data just won't persist
-  }
-}
-
-export function simulateTick(campaign: Campaign): Campaign {
-  if (campaign.status === 'stopped') return campaign
-  const add = 3 + Math.floor(Math.random() * 36)
-  const jitter = (rate: number) => Math.max(0, Math.round(add * rate * (0.6 + Math.random() * 0.8)))
-  return {
-    ...campaign,
-    sent: campaign.sent + add,
-    opens: campaign.opens + jitter(campaign.rate.o),
-    clicks: campaign.clicks + jitter(campaign.rate.c),
-    convs: campaign.convs + jitter(campaign.rate.v),
   }
 }
 
@@ -375,17 +361,6 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         c.stages[loc.si].nodes[loc.ni].campaigns.splice(loc.ci, 1)
       })
     ),
-  tick: () =>
-    set((s) => ({
-      sync: Date.now(),
-      ...withClient(s, (c) => {
-        for (const st of c.stages) {
-          for (const n of st.nodes) {
-            n.campaigns = n.campaigns.map(simulateTick)
-          }
-        }
-      }),
-    })),
 }))
 
 useBoardStore.subscribe((state) => saveState(state))
