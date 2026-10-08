@@ -16,7 +16,6 @@ export interface Campaign {
   opens: number
   clicks: number
   convs: number
-  rate: { o: number; c: number; v: number }
   period: string
   img?: string
   delivery: string
@@ -57,4 +56,7 @@ export interface BoardState {
   open: Record<string, boolean>
   sel: string | null
   sync: number
+  /** False until the initial Supabase fetch completes — distinguishes
+   * "no clients yet" (seed on first run) from "haven't loaded yet". */
+  dataLoaded: boolean
 }

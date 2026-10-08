@@ -43,7 +43,6 @@ function campaign(seedData: CampaignSeed, indexInZone: number): Campaign {
     opens: Math.round(seedData.sent * seedData.o),
     clicks: Math.round(seedData.sent * seedData.c),
     convs: Math.round(seedData.sent * seedData.v),
-    rate: { o: seedData.o, c: seedData.c, v: seedData.v },
     period: seedData.period,
     delivery: seedData.delivery,
     trigger: seedData.trigger,

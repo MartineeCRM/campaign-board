@@ -4,14 +4,14 @@ import { uid } from './utils/uid'
 import { seed, STAGE_PALETTE as SEED_PALETTE } from './data/seed'
 import { defaultCardPosition } from './utils/layout'
 import { clampCardPosition, posFromY } from './utils/geometry'
+import { deleteClientRow, loadAllClients, persistClient } from './persistence'
 import type { Campaign, CardPos } from './types'
 
 export const STAGE_PALETTE = SEED_PALETTE
 
-// Fills in defaults for fields that might be missing from data saved by an
-// older version of the schema, so old localStorage data self-heals on load
-// instead of crashing the render (seen once already with a field that got
-// added then removed again — keep this cheap safety net for next time).
+// Defensive defaults for fields that might come back missing/null from a
+// query (e.g. a node with no campaigns) — cheap insurance, not tied to any
+// particular storage backend.
 export function normalizeNode(node: FunnelNode): FunnelNode {
   return {
     ...node,
@@ -27,27 +27,6 @@ export function normalizeClient(client: Client): Client {
       nodes: stage.nodes.map(normalizeNode),
     })),
   }
-}
-
-export function loadInitialState(): Pick<BoardState, 'clients' | 'clientId' | 'mode'> {
-  try {
-    const raw = localStorage.getItem('funnelBoard.v1')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed?.clients?.length) {
-        const clients = (parsed.clients as Client[]).map(normalizeClient)
-        return {
-          clients,
-          clientId: parsed.clientId ?? clients[0].id,
-          mode: parsed.mode ?? 'full',
-        }
-      }
-    }
-  } catch {
-    // corrupt or unavailable storage — fall through to seed data
-  }
-  const clients = seed()
-  return { clients, clientId: clients[0].id, mode: 'full' }
 }
 
 function emptyNode(): FunnelNode {
@@ -91,17 +70,7 @@ export interface BoardStore extends BoardState {
   updateCampaign: (campaignId: string, patch: Partial<Campaign>) => void
   moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
   deleteCampaign: (campaignId: string) => void
-}
-
-export function saveState(state: Pick<BoardState, 'clients' | 'clientId' | 'mode'>): void {
-  try {
-    localStorage.setItem(
-      'funnelBoard.v1',
-      JSON.stringify({ clients: state.clients, clientId: state.clientId, mode: state.mode })
-    )
-  } catch {
-    // storage unavailable (private browsing, quota) — simulated data just won't persist
-  }
+  loadFromSupabase: () => Promise<void>
 }
 
 // Snapshot of `clients` taken when edit mode is entered, so "취소" can
@@ -120,16 +89,24 @@ function findCampaignLocation(client: Client, campaignId: string) {
   return null
 }
 
-const initial = loadInitialState()
-
 export const useBoardStore = create<BoardStore>((set, get) => ({
-  clients: initial.clients,
-  clientId: initial.clientId,
-  mode: initial.mode,
+  clients: [],
+  clientId: '',
+  mode: 'full',
   edit: false,
   open: {},
   sel: null,
   sync: Date.now(),
+  dataLoaded: false,
+
+  loadFromSupabase: async () => {
+    let clients = await loadAllClients()
+    if (clients.length === 0) {
+      clients = seed()
+      for (const client of clients) await persistClient(client)
+    }
+    set({ clients, clientId: clients[0].id, dataLoaded: true, sync: Date.now() })
+  },
 
   currentClient: () => {
     const s = get()
@@ -166,12 +143,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }
     set((s) => ({ clients: [...s.clients, client], clientId: id, edit: true }))
   },
-  deleteClient: () =>
-    set((s) => {
-      if (s.clients.length <= 1) return s
-      const clients = s.clients.filter((c) => c.id !== s.clientId)
-      return { clients, clientId: clients[0].id }
-    }),
+  deleteClient: () => {
+    const s = get()
+    if (s.clients.length <= 1) return
+    const removedId = s.clientId
+    const clients = s.clients.filter((c) => c.id !== removedId)
+    set({ clients, clientId: clients[0].id })
+    void deleteClientRow(removedId)
+  },
   renameClient: (name) => set((s) => withClient(s, (c) => { c.name = name })),
 
   addStage: () =>
@@ -320,7 +299,6 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
             opens: 0,
             clicks: 0,
             convs: 0,
-            rate: { o: 0.3, c: 0.1, v: 0.05 },
             period: '',
             delivery: 'Action-Based',
             trigger: node.sub,
@@ -363,4 +341,18 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     ),
 }))
 
-useBoardStore.subscribe((state) => saveState(state))
+// Debounced whole-tree resync: any store change re-sends the current
+// client's full stage/node/campaign tree to Supabase shortly after the
+// last edit, rather than wiring a Supabase call into each of the ~20 CRUD
+// actions individually. Guarded on dataLoaded so the initial load (and the
+// empty state before it) never races a write before there's anything real
+// to persist.
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+useBoardStore.subscribe((state) => {
+  if (!state.dataLoaded) return
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    const client = state.clients.find((c) => c.id === state.clientId)
+    if (client) void persistClient(client)
+  }, 500)
+})

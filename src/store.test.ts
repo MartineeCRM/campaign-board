@@ -1,6 +1,6 @@
 // src/store.test.ts
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useBoardStore, STAGE_PALETTE, saveState, normalizeClient } from './store'
+import { useBoardStore, STAGE_PALETTE, normalizeClient } from './store'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from './utils/geometry'
 import type { Client } from './types'
 
@@ -32,7 +32,6 @@ function fixtureClient(): Client {
                 opens: 10,
                 clicks: 5,
                 convs: 1,
-                rate: { o: 0.3, c: 0.1, v: 0.05 },
                 period: '상시',
                 delivery: 'Action-Based',
                 trigger: 'evt_1',
@@ -64,6 +63,7 @@ function resetStore() {
     open: {},
     sel: null,
     sync: 0,
+    dataLoaded: false,
   })
 }
 
@@ -241,17 +241,6 @@ describe('campaign actions', () => {
   it('deleteCampaign removes the campaign by id', () => {
     useBoardStore.getState().deleteCampaign('k1')
     expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns).toHaveLength(0)
-  })
-})
-
-describe('persistence', () => {
-  it('saveState writes clients, clientId and mode under funnelBoard.v1', () => {
-    const state = useBoardStore.getState()
-    saveState(state)
-    const raw = JSON.parse(localStorage.getItem('funnelBoard.v1')!)
-    expect(raw.clientId).toBe(state.clientId)
-    expect(raw.mode).toBe(state.mode)
-    expect(raw.clients).toHaveLength(state.clients.length)
   })
 })
 
