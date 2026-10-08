@@ -42,7 +42,6 @@ function fixtureClient(): Client {
                 link: '',
               },
             ],
-            branches: [],
           },
         ],
       },
@@ -50,7 +49,7 @@ function fixtureClient(): Client {
         id: 's2',
         name: 'Stage 2',
         color: STAGE_PALETTE[1],
-        nodes: [{ id: 'n2', label: 'Node 2', sub: 'evt_2', line: 'solid', campaigns: [], branches: [] }],
+        nodes: [{ id: 'n2', label: 'Node 2', sub: 'evt_2', line: 'solid', campaigns: [] }],
       },
     ],
   }
@@ -200,51 +199,6 @@ describe('node actions', () => {
   })
 })
 
-describe('branch actions', () => {
-  it('addBranch appends a new branch onto the parent node', () => {
-    useBoardStore.getState().addBranch('n1')
-    const node = useBoardStore.getState().currentClient().stages[0].nodes[0]
-    expect(node.branches).toHaveLength(1)
-    expect(node.branches[0].label).toBe('새 분기')
-    expect(node.branches[0].line).toBe('dashed')
-  })
-
-  it('renameNode also works on a branch (found by searching parent nodes)', () => {
-    useBoardStore.getState().addBranch('n1')
-    const branchId = useBoardStore.getState().currentClient().stages[0].nodes[0].branches[0].id
-    useBoardStore.getState().renameNode(branchId, { label: 'Branch Renamed' })
-    const node = useBoardStore.getState().currentClient().stages[0].nodes[0]
-    expect(node.branches[0].label).toBe('Branch Renamed')
-    // the parent node itself is untouched
-    expect(node.label).toBe('Node 1')
-  })
-
-  it('setNodeLine also works on a branch', () => {
-    useBoardStore.getState().addBranch('n1')
-    const branchId = useBoardStore.getState().currentClient().stages[0].nodes[0].branches[0].id
-    useBoardStore.getState().setNodeLine(branchId, 'dotted')
-    expect(useBoardStore.getState().currentClient().stages[0].nodes[0].branches[0].line).toBe('dotted')
-  })
-
-  it('deleteBranch removes only the targeted branch', () => {
-    useBoardStore.getState().addBranch('n1')
-    useBoardStore.getState().addBranch('n1')
-    const branches = useBoardStore.getState().currentClient().stages[0].nodes[0].branches
-    useBoardStore.getState().deleteBranch('n1', branches[0].id)
-    const after = useBoardStore.getState().currentClient().stages[0].nodes[0].branches
-    expect(after).toHaveLength(1)
-    expect(after[0].id).toBe(branches[1].id)
-  })
-
-  it('deleteNode on a top-level node does not touch a different node with the same-shaped branches', () => {
-    useBoardStore.getState().addBranch('n1')
-    useBoardStore.getState().deleteNode('n2')
-    const stages = useBoardStore.getState().currentClient().stages
-    expect(stages[0].nodes[0].branches).toHaveLength(1)
-    expect(stages[1].nodes).toHaveLength(0)
-  })
-})
-
 describe('campaign actions', () => {
   it('addCampaign appends a campaign positioned in the requested zone', () => {
     useBoardStore.getState().addCampaign('n1', 'bottom')
@@ -341,30 +295,17 @@ describe('persistence', () => {
 })
 
 describe('normalizeClient', () => {
-  it('fills in a missing branches array on an old-shaped node', () => {
+  it('fills in a missing campaigns array on an old-shaped node', () => {
     const old = fixtureClient()
-    // simulate data saved before `branches` existed on FunnelNode
+    // simulate data saved before `campaigns` was guaranteed to be present
     // @ts-expect-error intentionally constructing a pre-migration shape
-    delete old.stages[0].nodes[0].branches
+    delete old.stages[1].nodes[0].campaigns
     const normalized = normalizeClient(old)
-    expect(normalized.stages[0].nodes[0].branches).toEqual([])
-  })
-
-  it('fills in missing branches on a nested branch too', () => {
-    const old = fixtureClient()
-    old.stages[0].nodes[0].branches = [
-      // @ts-expect-error intentionally omitting branches on the branch itself
-      { id: 'b1', label: 'Old Branch', sub: 'evt', line: 'dashed', campaigns: [] },
-    ]
-    const normalized = normalizeClient(old)
-    expect(normalized.stages[0].nodes[0].branches[0].branches).toEqual([])
+    expect(normalized.stages[1].nodes[0].campaigns).toEqual([])
   })
 
   it('leaves already-current data untouched', () => {
     const current = fixtureClient()
-    current.stages[0].nodes[0].branches = [
-      { id: 'b1', label: 'Branch', sub: 'evt', line: 'dashed', campaigns: [], branches: [] },
-    ]
     const normalized = normalizeClient(current)
     expect(normalized).toEqual(current)
   })
