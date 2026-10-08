@@ -6,6 +6,7 @@ import AddStageButton from './AddStageButton'
 export default function FunnelBoard() {
   const edit = useBoardStore((s) => s.edit)
   const client = useBoardStore((s) => s.currentClient())
+  const zoom = useBoardStore((s) => s.zoom)
 
   return (
     <div style={{ overflowX: 'auto', padding: '28px 48px 72px', flex: 1 }}>
@@ -15,6 +16,7 @@ export default function FunnelBoard() {
           alignItems: 'flex-start',
           width: 'max-content',
           minWidth: '100%',
+          zoom,
         }}
       >
         {client.stages.flatMap((stage) => [

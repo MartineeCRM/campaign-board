@@ -23,6 +23,10 @@ export default function Header() {
   const enterEdit = useBoardStore((s) => s.enterEdit)
   const confirmEdit = useBoardStore((s) => s.confirmEdit)
   const cancelEdit = useBoardStore((s) => s.cancelEdit)
+  const zoom = useBoardStore((s) => s.zoom)
+  const zoomIn = useBoardStore((s) => s.zoomIn)
+  const zoomOut = useBoardStore((s) => s.zoomOut)
+  const resetZoom = useBoardStore((s) => s.resetZoom)
 
   const counts: Record<Status, number> = { alwayson: 0, experiment: 0, stopped: 0 }
   for (const stage of client.stages) {
@@ -43,6 +47,18 @@ export default function Header() {
     boxShadow: active ? '0 1px 4px rgba(0,20,60,.1)' : 'none',
     color: active ? '#191f28' : '#8b95a1',
   })
+  const zoomBtn: React.CSSProperties = {
+    fontSize: 14,
+    fontWeight: 600,
+    width: 26,
+    height: 26,
+    lineHeight: 1,
+    border: 0,
+    borderRadius: 8,
+    cursor: 'pointer',
+    background: 'transparent',
+    color: '#4e5968',
+  }
 
   return (
     <header
@@ -140,6 +156,39 @@ export default function Header() {
           </button>
           <button onClick={() => setMode('click')} style={segBtn(mode === 'click')}>
             클릭 노출
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            padding: 4,
+            borderRadius: 12,
+            background: '#f2f4f6',
+          }}
+        >
+          <button onClick={zoomOut} title="축소" style={zoomBtn}>
+            −
+          </button>
+          <span
+            onClick={resetZoom}
+            title="100%로 초기화"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              width: 38,
+              textAlign: 'center',
+              color: '#191f28',
+              cursor: 'pointer',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {Math.round(zoom * 100)}%
+          </span>
+          <button onClick={zoomIn} title="확대" style={zoomBtn}>
+            +
           </button>
         </div>
 

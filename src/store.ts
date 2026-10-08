@@ -9,6 +9,10 @@ import type { Campaign, CardPos } from './types'
 
 export const STAGE_PALETTE = SEED_PALETTE
 
+export const ZOOM_MIN = 0.4
+export const ZOOM_MAX = 1.5
+const ZOOM_STEP = 0.1
+
 // Defensive defaults for fields that might come back missing/null from a
 // query (e.g. a node with no campaigns) — cheap insurance, not tied to any
 // particular storage backend.
@@ -71,6 +75,10 @@ export interface BoardStore extends BoardState {
   moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
   deleteCampaign: (campaignId: string) => void
   loadFromSupabase: () => Promise<void>
+  zoom: number
+  zoomIn: () => void
+  zoomOut: () => void
+  resetZoom: () => void
 }
 
 // Snapshot of `clients` taken when edit mode is entered, so "취소" can
@@ -78,6 +86,7 @@ export interface BoardStore extends BoardState {
 // state — it never needs to trigger a render, only to be read/written by
 // the enter/confirm/cancel actions below.
 let editSnapshot: Client[] | null = null
+let loadInFlight = false
 
 function findCampaignLocation(client: Client, campaignId: string) {
   for (let si = 0; si < client.stages.length; si++) {
@@ -98,14 +107,28 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   sel: null,
   sync: Date.now(),
   dataLoaded: false,
+  zoom: 1,
+
+  zoomIn: () => set((s) => ({ zoom: Math.min(ZOOM_MAX, Math.round((s.zoom + ZOOM_STEP) * 100) / 100) })),
+  zoomOut: () => set((s) => ({ zoom: Math.max(ZOOM_MIN, Math.round((s.zoom - ZOOM_STEP) * 100) / 100) })),
+  resetZoom: () => set({ zoom: 1 }),
 
   loadFromSupabase: async () => {
-    let clients = await loadAllClients()
-    if (clients.length === 0) {
-      clients = seed()
-      for (const client of clients) await persistClient(client)
+    // Guards against two overlapping calls both seeing an empty table and
+    // each inserting their own copy of the seed clients — React StrictMode
+    // double-invokes effects in dev, which double-fires this on login.
+    if (loadInFlight) return
+    loadInFlight = true
+    try {
+      let clients = await loadAllClients()
+      if (clients.length === 0) {
+        clients = seed()
+        for (const client of clients) await persistClient(client)
+      }
+      set({ clients, clientId: clients[0].id, dataLoaded: true, sync: Date.now() })
+    } finally {
+      loadInFlight = false
     }
-    set({ clients, clientId: clients[0].id, dataLoaded: true, sync: Date.now() })
   },
 
   currentClient: () => {
@@ -341,15 +364,18 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     ),
 }))
 
-// Debounced whole-tree resync: any store change re-sends the current
-// client's full stage/node/campaign tree to Supabase shortly after the
-// last edit, rather than wiring a Supabase call into each of the ~20 CRUD
-// actions individually. Guarded on dataLoaded so the initial load (and the
-// empty state before it) never races a write before there's anything real
-// to persist.
+// Debounced whole-tree resync: any change to `clients` re-sends the
+// current client's full stage/node/campaign tree to Supabase shortly
+// after the last edit, rather than wiring a Supabase call into each of
+// the ~20 CRUD actions individually. Guarded on dataLoaded so the initial
+// load never races a write before there's anything real to persist, and
+// on a `clients` reference check so UI-only state (zoom, mode, selection)
+// doesn't trigger a redundant write.
 let persistTimer: ReturnType<typeof setTimeout> | null = null
+let lastSeenClients: Client[] | null = null
 useBoardStore.subscribe((state) => {
-  if (!state.dataLoaded) return
+  if (!state.dataLoaded || state.clients === lastSeenClients) return
+  lastSeenClients = state.clients
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     const client = state.clients.find((c) => c.id === state.clientId)
