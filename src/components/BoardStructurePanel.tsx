@@ -29,6 +29,8 @@ export default function BoardStructurePanel() {
   const setNodeLine = useBoardStore((s) => s.setNodeLine)
   const deleteNode = useBoardStore((s) => s.deleteNode)
   const importBrazeCampaigns = useBoardStore((s) => s.importBrazeCampaigns)
+  const confirmEdit = useBoardStore((s) => s.confirmEdit)
+  const cancelEdit = useBoardStore((s) => s.cancelEdit)
 
   // Braze 피커 state
   const [brazeItems, setBrazeItems] = useState<BrazeItem[]>([])
@@ -83,12 +85,19 @@ export default function BoardStructurePanel() {
   }
 
   function handleApply() {
-    if (!targetNodeId || selected.size === 0) return
-    const toAdd = brazeItems
-      .filter((i) => selected.has(i.id))
-      .map((i) => ({ brazeId: i.id, brazeType: i.type, name: i.name }))
-    importBrazeCampaigns(targetNodeId, 'top', toAdd)
+    if (targetNodeId && selected.size > 0) {
+      const toAdd = brazeItems
+        .filter((i) => selected.has(i.id))
+        .map((i) => ({ brazeId: i.id, brazeType: i.type, name: i.name }))
+      importBrazeCampaigns(targetNodeId, 'top', toAdd)
+    }
     setSelected(new Set())
+    confirmEdit()
+  }
+
+  function handleCancel() {
+    setSelected(new Set())
+    cancelEdit()
   }
 
   const filteredItems = brazeItems.filter(
@@ -273,27 +282,23 @@ export default function BoardStructurePanel() {
             ))}
           </div>
 
-          {/* 적용/취소 */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => setSelected(new Set())}
-              style={{ flex: 1, fontSize: 13, fontWeight: 700, padding: '10px 0', border: '1px solid #e5e8eb', borderRadius: 10, background: '#fff', color: '#4e5968', cursor: 'pointer' }}
-            >
-              취소
-            </button>
-            <button
-              onClick={handleApply}
-              disabled={selected.size === 0 || !targetNodeId}
-              style={{
-                flex: 1, fontSize: 13, fontWeight: 700, padding: '10px 0', border: 0, borderRadius: 10, cursor: selected.size > 0 ? 'pointer' : 'not-allowed',
-                background: selected.size > 0 ? '#191f28' : '#e5e8eb',
-                color: selected.size > 0 ? '#fff' : '#8b95a1',
-              }}
-            >
-              {selected.size > 0 ? `${selected.size}개 적용` : '적용'}
-            </button>
-          </div>
         </div>
+      </div>
+
+      {/* ── 하단 취소/적용 ── */}
+      <div style={{ flexShrink: 0, padding: '12px 16px', borderTop: '1px solid #f2f4f6', display: 'flex', gap: 8 }}>
+        <button
+          onClick={handleCancel}
+          style={{ flex: 1, fontSize: 13, fontWeight: 700, padding: '11px 0', border: '1px solid #e5e8eb', borderRadius: 10, background: '#fff', color: '#4e5968', cursor: 'pointer' }}
+        >
+          취소
+        </button>
+        <button
+          onClick={handleApply}
+          style={{ flex: 2, fontSize: 13, fontWeight: 700, padding: '11px 0', border: 0, borderRadius: 10, cursor: 'pointer', background: '#191f28', color: '#fff' }}
+        >
+          {selected.size > 0 ? `적용 (${selected.size}개 추가)` : '적용'}
+        </button>
       </div>
     </div>
   )
