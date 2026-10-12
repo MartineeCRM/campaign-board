@@ -5,10 +5,6 @@ import type { Stage } from '../types'
 export default function StageColumn({ stage }: { stage: Stage }) {
   const edit = useBoardStore((s) => s.edit)
   const renameStage = useBoardStore((s) => s.renameStage)
-  const cycleStageColor = useBoardStore((s) => s.cycleStageColor)
-  const moveStage = useBoardStore((s) => s.moveStage)
-  const addNode = useBoardStore((s) => s.addNode)
-  const deleteStage = useBoardStore((s) => s.deleteStage)
 
   return (
     <div style={{ flex: '0 0 auto', minWidth: 110, padding: '0 14px', boxSizing: 'border-box' }}>
@@ -57,53 +53,8 @@ export default function StageColumn({ stage }: { stage: Stage }) {
           )}
         </div>
 
-        {/* Positioned right under the pill, not after the whole
-            (tall, drag-canvas-sized) track — otherwise it sits far below
-            with nothing else in view, looking like orphaned buttons. */}
-        {edit && (
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: SPINE_Y + 20,
-              transform: 'translateX(-50%)',
-              zIndex: 6,
-            }}
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, width: 96 }}>
-              <button onClick={() => moveStage(stage.id, -1)} style={smallBtn}>
-                ◀
-              </button>
-              <button onClick={() => moveStage(stage.id, 1)} style={smallBtn}>
-                ▶
-              </button>
-              <button onClick={() => cycleStageColor(stage.id)} style={{ ...smallBtn, gridColumn: '1 / 3' }}>
-                색상 변경
-              </button>
-              <button onClick={() => addNode(stage.id)} style={{ ...smallBtn, gridColumn: '1 / 3' }}>
-                + 노드
-              </button>
-              <button
-                onClick={() => deleteStage(stage.id)}
-                style={{ ...smallBtn, gridColumn: '1 / 3', color: '#f04452', background: '#fff0f1' }}
-              >
-                단계 삭제
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
-const smallBtn: React.CSSProperties = {
-  fontSize: 11,
-  padding: 4,
-  border: 0,
-  background: '#f2f4f6',
-  color: '#4e5968',
-  fontWeight: 600,
-  borderRadius: 8,
-  cursor: 'pointer',
-}

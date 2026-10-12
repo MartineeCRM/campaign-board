@@ -1,22 +1,15 @@
-import { useState } from 'react'
 import { useBoardStore } from '../store'
 import { useCardDrag } from '../hooks/useCardDrag'
 import { cardWidth } from '../utils/format'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from '../utils/geometry'
 import CampaignCard from './CampaignCard'
-import BrazeCampaignPicker from './BrazeCampaignPicker'
-import type { Campaign, CardPos, FunnelNode, LineStyle, Stage } from '../types'
+import type { Campaign, FunnelNode, Stage } from '../types'
 
 // Matches an expanded card with the placeholder image; collapsed chips are
 // much shorter. Only used to clamp drag bounds, not to measure real layout —
 // a card with a tall custom image can still visually extend past this.
 const EXPANDED_HEIGHT_ESTIMATE = 270
 const COLLAPSED_HEIGHT_ESTIMATE = 48
-const LINE_OPTIONS: { value: LineStyle; label: string }[] = [
-  { value: 'solid', label: '실선' },
-  { value: 'dashed', label: '점선' },
-  { value: 'dotted', label: '점점선' },
-]
 
 interface DraggableCardProps {
   campaign: Campaign
@@ -54,12 +47,7 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
   const mode = useBoardStore((s) => s.mode)
   const open = useBoardStore((s) => s.open)
   const renameNode = useBoardStore((s) => s.renameNode)
-  const setNodeLine = useBoardStore((s) => s.setNodeLine)
   const insertNodeAfter = useBoardStore((s) => s.insertNodeAfter)
-  const deleteNode = useBoardStore((s) => s.deleteNode)
-  const addCampaign = useBoardStore((s) => s.addCampaign)
-
-  const [pickerPos, setPickerPos] = useState<CardPos | null>(null)
 
   const top = node.campaigns.filter((c) => c.pos === 'top')
   const bottom = node.campaigns.filter((c) => c.pos === 'bottom')
@@ -198,90 +186,6 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
           />
         ))}
 
-        {/* Positioned right under the label, not after the whole (tall,
-            drag-canvas-sized) track — it used to sit in normal flow after
-            the 1250px track, which put it far below the node with nothing
-            else in view, looking like orphaned, unexplained buttons. */}
-        {edit && (
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: SPINE_Y + 65,
-              transform: 'translateX(-50%)',
-              zIndex: 6,
-              width: 252,
-              boxSizing: 'border-box',
-              borderRadius: 14,
-              padding: 10,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              background: '#fff',
-              boxShadow: '0 6px 20px rgba(0,20,60,.14)',
-            }}
-          >
-          <div style={{ display: 'flex', gap: 4 }}>
-            {LINE_OPTIONS.map((opt) => {
-              const active = node.line === opt.value
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => setNodeLine(node.id, opt.value)}
-                  style={{
-                    flex: 1,
-                    fontSize: 11,
-                    padding: 4,
-                    border: 0,
-                    borderRadius: 8,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    background: active ? '#191f28' : '#f2f4f6',
-                    color: active ? '#fff' : '#4e5968',
-                  }}
-                >
-                  {opt.label}
-                </button>
-              )
-            })}
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => addCampaign(node.id, 'top')}
-              style={{ flex: 1, fontSize: 11, padding: 4, border: 0, background: '#f2f4f6', color: '#4e5968', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
-            >
-              + 위
-            </button>
-            <button
-              onClick={() => addCampaign(node.id, 'bottom')}
-              style={{ flex: 1, fontSize: 11, padding: 4, border: 0, background: '#f2f4f6', color: '#4e5968', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
-            >
-              + 아래
-            </button>
-            <button
-              onClick={() => deleteNode(node.id)}
-              style={{ fontSize: 11, padding: '4px 7px', border: 0, color: '#f04452', background: '#fff0f1', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
-            >
-              삭제
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => setPickerPos('top')}
-              style={{ flex: 1, fontSize: 11, padding: '6px 4px', border: 0, background: '#eef4ff', color: '#3182f6', fontWeight: 700, borderRadius: 8, cursor: 'pointer' }}
-            >
-              Braze에서 추가
-            </button>
-          </div>
-        </div>
-      )}
-      {pickerPos && (
-        <BrazeCampaignPicker
-          nodeId={node.id}
-          pos={pickerPos}
-          onClose={() => setPickerPos(null)}
-        />
-      )}
       </div>
     </div>
   )
