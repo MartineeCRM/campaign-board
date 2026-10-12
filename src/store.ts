@@ -72,6 +72,7 @@ export interface BoardStore extends BoardState {
   insertNodeAfter: (nodeId: string) => void
   deleteNode: (nodeId: string) => void
   addCampaign: (nodeId: string, pos: CardPos) => void
+  importBrazeCampaigns: (nodeId: string, pos: CardPos, items: { brazeId: string; brazeType: 'campaign' | 'canvas'; name: string }[]) => void
   updateCampaign: (campaignId: string, patch: Partial<Campaign>) => void
   moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
   deleteCampaign: (campaignId: string) => void
@@ -371,6 +372,43 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         }
       })
     ),
+  importBrazeCampaigns: (nodeId, pos, items) =>
+    set((s) =>
+      withClient(s, (c) => {
+        for (const st of c.stages) {
+          const node = st.nodes.find((x) => x.id === nodeId)
+          if (!node) continue
+          items.forEach((item) => {
+            const indexInZone = node.campaigns.filter((k) => k.pos === pos).length
+            const { x, y } = defaultCardPosition(pos, indexInZone)
+            node.campaigns.push({
+              id: uid(),
+              name: item.name,
+              channel: 'Push',
+              status: 'experiment',
+              pos,
+              x,
+              y,
+              brazeId: item.brazeId,
+              brazeType: item.brazeType,
+              sent: 0,
+              opens: 0,
+              clicks: 0,
+              convs: 0,
+              period: '',
+              delivery: 'Action-Based',
+              trigger: node.sub,
+              audience: '',
+              convEvent: '',
+              cap: '',
+              link: '',
+            })
+          })
+          return
+        }
+      })
+    ),
+
   updateCampaign: (campaignId, patch) =>
     set((s) =>
       withClient(s, (c) => {

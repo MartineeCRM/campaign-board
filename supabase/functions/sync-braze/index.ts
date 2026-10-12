@@ -108,22 +108,21 @@ Deno.serve(async (req) => {
     }
 
     try {
-      // Read braze credentials + decrypt API key from Vault
+      // Read braze credentials (REST URL) and decrypt API key via RPC.
+      // vault.decrypted_secrets is in the vault schema and cannot be queried
+      // directly via supabase-js .from() — use get_braze_api_key() instead.
       const { data: creds, error: credsErr } = await admin
         .from('braze_credentials')
-        .select('rest_api_url, api_key_secret_id')
+        .select('rest_api_url')
         .eq('client_id', clientId)
         .single()
       if (credsErr || !creds) throw new Error('Braze 인증정보가 없습니다. 먼저 설정을 완료하세요.')
 
-      const { data: secretRow, error: vaultErr } = await admin
-        .from('vault.decrypted_secrets')
-        .select('decrypted_secret')
-        .eq('id', creds.api_key_secret_id)
-        .single()
-      if (vaultErr || !secretRow?.decrypted_secret) throw new Error('Vault 시크릿 복호화 실패')
+      const { data: apiKey, error: vaultErr } = await admin.rpc('get_braze_api_key', {
+        p_client_id: clientId,
+      })
+      if (vaultErr || !apiKey) throw new Error('Vault 시크릿 복호화 실패 — Braze 설정을 다시 저장해보세요.')
 
-      const apiKey: string = secretRow.decrypted_secret
       const baseUrl = creds.rest_api_url.replace(/\/$/, '')
 
       // Fetch all campaigns for this client that have a braze_id

@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { useBoardStore } from '../store'
 import { useCardDrag } from '../hooks/useCardDrag'
 import { cardWidth } from '../utils/format'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from '../utils/geometry'
 import CampaignCard from './CampaignCard'
-import type { Campaign, FunnelNode, LineStyle, Stage } from '../types'
+import BrazeCampaignPicker from './BrazeCampaignPicker'
+import type { Campaign, CardPos, FunnelNode, LineStyle, Stage } from '../types'
 
 // Matches an expanded card with the placeholder image; collapsed chips are
 // much shorter. Only used to clamp drag bounds, not to measure real layout —
@@ -57,6 +59,8 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
   const insertNodeAfter = useBoardStore((s) => s.insertNodeAfter)
   const deleteNode = useBoardStore((s) => s.deleteNode)
   const addCampaign = useBoardStore((s) => s.addCampaign)
+
+  const [pickerPos, setPickerPos] = useState<CardPos | null>(null)
 
   const top = node.campaigns.filter((c) => c.pos === 'top')
   const bottom = node.campaigns.filter((c) => c.pos === 'bottom')
@@ -268,6 +272,12 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
               + 아래 캠페인
             </button>
             <button
+              onClick={() => setPickerPos('top')}
+              style={{ flex: 1, fontSize: 11, padding: 4, border: 0, background: '#eef4ff', color: '#3182f6', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
+            >
+              Braze 추가
+            </button>
+            <button
               onClick={() => deleteNode(node.id)}
               style={{ fontSize: 11, padding: '4px 7px', border: 0, color: '#f04452', background: '#fff0f1', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
             >
@@ -275,6 +285,13 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
             </button>
           </div>
         </div>
+      )}
+      {pickerPos && (
+        <BrazeCampaignPicker
+          nodeId={node.id}
+          pos={pickerPos}
+          onClose={() => setPickerPos(null)}
+        />
       )}
       </div>
     </div>
