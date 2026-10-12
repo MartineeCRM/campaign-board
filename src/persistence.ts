@@ -46,6 +46,7 @@ interface CampaignRow {
   clicks: number
   convs: number
   last_synced_at: string | null
+  created_at?: string
 }
 
 function campaignFromRow(row: CampaignRow): Campaign {
@@ -70,6 +71,8 @@ function campaignFromRow(row: CampaignRow): Campaign {
     cap: row.cap,
     link: row.link,
     brazeId: row.braze_id ?? undefined,
+    brazeType: row.braze_type ?? undefined,
+    lastSyncedAt: row.last_synced_at ?? undefined,
   }
 }
 
@@ -78,7 +81,7 @@ function campaignToRow(campaign: Campaign, nodeId: string): CampaignRow {
     id: campaign.id,
     node_id: nodeId,
     braze_id: campaign.brazeId ?? null,
-    braze_type: null,
+    braze_type: campaign.brazeType ?? null,
     name: campaign.name,
     channel: campaign.channel,
     status: campaign.status,
@@ -97,7 +100,7 @@ function campaignToRow(campaign: Campaign, nodeId: string): CampaignRow {
     opens: campaign.opens,
     clicks: campaign.clicks,
     convs: campaign.convs,
-    last_synced_at: null,
+    last_synced_at: campaign.lastSyncedAt ?? null,
   }
 }
 

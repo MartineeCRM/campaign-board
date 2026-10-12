@@ -6,6 +6,7 @@ import { defaultCardPosition } from './utils/layout'
 import { clampCardPosition, posFromY } from './utils/geometry'
 import { deleteClientRow, loadAllClients, persistClient } from './persistence'
 import type { Campaign, CardPos } from './types'
+import { supabase } from './supabase'
 
 export const STAGE_PALETTE = SEED_PALETTE
 
@@ -79,6 +80,10 @@ export interface BoardStore extends BoardState {
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
+  // Braze sync
+  isSyncing: boolean
+  syncError: string | null
+  syncBraze: () => Promise<void>
 }
 
 // Snapshot of `clients` taken when edit mode is entered, so "취소" can
@@ -108,10 +113,42 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   sync: Date.now(),
   dataLoaded: false,
   zoom: 1,
+  isSyncing: false,
+  syncError: null,
 
   zoomIn: () => set((s) => ({ zoom: Math.min(ZOOM_MAX, Math.round((s.zoom + ZOOM_STEP) * 100) / 100) })),
   zoomOut: () => set((s) => ({ zoom: Math.max(ZOOM_MIN, Math.round((s.zoom - ZOOM_STEP) * 100) / 100) })),
   resetZoom: () => set({ zoom: 1 }),
+
+  syncBraze: async () => {
+    const { clientId, isSyncing } = get()
+    if (isSyncing) return
+    set({ isSyncing: true, syncError: null })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('로그인이 필요합니다')
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+      const res = await fetch(`${supabaseUrl}/functions/v1/sync-braze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ clientId }),
+      })
+      const body = await res.json() as { ok?: boolean; error?: string; synced?: number }
+      if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`)
+
+      // Reload from DB so synced metrics are reflected immediately
+      await get().loadFromSupabase()
+      set({ sync: Date.now() })
+    } catch (err) {
+      set({ syncError: err instanceof Error ? err.message : String(err) })
+    } finally {
+      set({ isSyncing: false })
+    }
+  },
 
   loadFromSupabase: async () => {
     // Guards against two overlapping calls both seeing an empty table and

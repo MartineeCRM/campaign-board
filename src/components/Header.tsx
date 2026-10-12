@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useBoardStore } from '../store'
 import { supabase } from '../supabase'
 import type { Status } from '../types'
+import BrazeSettingsModal from './BrazeSettingsModal'
 
 const STATUS_META: Record<Status, { label: string; color: string }> = {
   alwayson: { label: 'Always-On', color: '#1a9a4a' },
@@ -9,6 +11,7 @@ const STATUS_META: Record<Status, { label: string; color: string }> = {
 }
 
 export default function Header() {
+  const [brazeOpen, setBrazeOpen] = useState(false)
   const edit = useBoardStore((s) => s.edit)
   const mode = useBoardStore((s) => s.mode)
   const sync = useBoardStore((s) => s.sync)
@@ -27,6 +30,8 @@ export default function Header() {
   const zoomIn = useBoardStore((s) => s.zoomIn)
   const zoomOut = useBoardStore((s) => s.zoomOut)
   const resetZoom = useBoardStore((s) => s.resetZoom)
+  const isSyncing = useBoardStore((s) => s.isSyncing)
+  const syncBraze = useBoardStore((s) => s.syncBraze)
 
   const counts: Record<Status, number> = { alwayson: 0, experiment: 0, stopped: 0 }
   for (const stage of client.stages) {
@@ -245,6 +250,41 @@ export default function Header() {
         )}
 
         <button
+          onClick={() => void syncBraze()}
+          disabled={isSyncing}
+          title="Braze 싱크"
+          style={{
+            fontSize: 12,
+            padding: '7px 10px',
+            border: '1px solid #e5e8eb',
+            background: isSyncing ? '#f2f4f6' : '#fff',
+            color: isSyncing ? '#8b95a1' : '#3182f6',
+            fontWeight: 600,
+            borderRadius: 8,
+            cursor: isSyncing ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {isSyncing ? '싱크 중...' : '↻ Braze'}
+        </button>
+
+        <button
+          onClick={() => setBrazeOpen(true)}
+          title="Braze 연동 설정"
+          style={{
+            fontSize: 12,
+            padding: '7px 10px',
+            border: '1px solid #e5e8eb',
+            background: '#fff',
+            color: '#4e5968',
+            fontWeight: 600,
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+        >
+          ⚙ Braze 설정
+        </button>
+
+        <button
           onClick={() => supabase.auth.signOut()}
           title="로그아웃"
           style={{
@@ -261,6 +301,8 @@ export default function Header() {
           로그아웃
         </button>
       </div>
+
+      {brazeOpen && <BrazeSettingsModal onClose={() => setBrazeOpen(false)} />}
     </header>
   )
 }

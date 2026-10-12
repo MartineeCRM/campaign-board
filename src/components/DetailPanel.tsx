@@ -162,6 +162,51 @@ export default function DetailPanel() {
           </div>
         </div>
 
+        {/* Braze 연결 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#191f28', marginBottom: 6 }}>Braze 연결</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '92px minmax(0,1fr)', gap: 12, alignItems: 'center', padding: '11px 0', borderBottom: '1px solid #f2f4f6' }}>
+            <div style={{ fontSize: 13, color: '#8b95a1' }}>Braze ID</div>
+            {edit ? (
+              <input
+                value={k.brazeId ?? ''}
+                onChange={(e) => updateCampaign(k.id, { brazeId: e.target.value || undefined })}
+                placeholder="캠페인 또는 캔버스 ID"
+                style={{ fontSize: 13, padding: '7px 9px', border: '1px solid #e5e8eb', borderRadius: 8, minWidth: 0, fontFamily: 'ui-monospace, Menlo, monospace' }}
+              />
+            ) : (
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#333d4b', fontFamily: 'ui-monospace, Menlo, monospace', wordBreak: 'break-all' }}>
+                {k.brazeId || '—'}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '92px minmax(0,1fr)', gap: 12, alignItems: 'center', padding: '11px 0', borderBottom: '1px solid #f2f4f6' }}>
+            <div style={{ fontSize: 13, color: '#8b95a1' }}>유형</div>
+            {edit ? (
+              <select
+                value={k.brazeType ?? 'campaign'}
+                onChange={(e) => updateCampaign(k.id, { brazeType: e.target.value as 'campaign' | 'canvas' })}
+                style={{ fontSize: 13, padding: '7px 9px', border: '1px solid #e5e8eb', borderRadius: 8, background: '#fff', color: '#191f28' }}
+              >
+                <option value="campaign">Campaign</option>
+                <option value="canvas">Canvas</option>
+              </select>
+            ) : (
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#333d4b' }}>
+                {k.brazeType ?? '—'}
+              </div>
+            )}
+          </div>
+          {k.lastSyncedAt && (
+            <div style={{ display: 'grid', gridTemplateColumns: '92px minmax(0,1fr)', gap: 12, alignItems: 'center', padding: '11px 0' }}>
+              <div style={{ fontSize: 13, color: '#8b95a1' }}>마지막 싱크</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#8b95a1' }}>
+                {new Date(k.lastSyncedAt).toLocaleString('ko-KR', { hour12: false })}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div style={{ padding: '16px 24px 22px', borderTop: '1px solid #f2f4f6' }}>
           {k.link ? (
             <a

@@ -25,6 +25,8 @@ export interface Campaign {
   cap: string
   link: string
   brazeId?: string
+  brazeType?: 'campaign' | 'canvas'
+  lastSyncedAt?: string
 }
 
 export interface FunnelNode {
