@@ -8,11 +8,9 @@ export default function BoardStructurePanel() {
   const addStage = useBoardStore((s) => s.addStage)
   const renameStage = useBoardStore((s) => s.renameStage)
   const cycleStageColor = useBoardStore((s) => s.cycleStageColor)
-  const moveStage = useBoardStore((s) => s.moveStage)
   const deleteStage = useBoardStore((s) => s.deleteStage)
   const addNode = useBoardStore((s) => s.addNode)
   const renameNode = useBoardStore((s) => s.renameNode)
-  const moveNode = useBoardStore((s) => s.moveNode)
   const deleteNode = useBoardStore((s) => s.deleteNode)
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
@@ -160,20 +158,8 @@ export default function BoardStructurePanel() {
                 </div>
               </div>
 
-              {/* 순서 / 삭제 */}
+              {/* 삭제 */}
               <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={() => moveStage(selectedStage.id, -1)}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 10px', border: 0, background: '#f2f4f6', color: '#4e5968', borderRadius: 8, cursor: 'pointer' }}
-                >
-                  ◀ 앞으로
-                </button>
-                <button
-                  onClick={() => moveStage(selectedStage.id, 1)}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 10px', border: 0, background: '#f2f4f6', color: '#4e5968', borderRadius: 8, cursor: 'pointer' }}
-                >
-                  뒤로 ▶
-                </button>
                 {client.stages.length > 1 && (
                   <button
                     onClick={() => {
@@ -197,7 +183,7 @@ export default function BoardStructurePanel() {
               <div style={labelStyle}>노드 순서</div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {selectedStage.nodes.map((node, ni) => (
+              {selectedStage.nodes.map((node) => (
                 <div
                   key={node.id}
                   style={{ background: '#f8f9fb', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}
@@ -231,22 +217,6 @@ export default function BoardStructurePanel() {
                         {node.sub && <div style={{ fontSize: 11, color: '#8b95a1', marginTop: 2 }}>{node.sub}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 3 }}>
-                        {ni > 0 && (
-                          <button
-                            onClick={() => moveNode(selectedStage.id, node.id, -1)}
-                            style={{ fontSize: 11, padding: '3px 6px', border: 0, background: '#e8eaed', color: '#4e5968', borderRadius: 6, cursor: 'pointer' }}
-                          >
-                            ↑
-                          </button>
-                        )}
-                        {ni < selectedStage.nodes.length - 1 && (
-                          <button
-                            onClick={() => moveNode(selectedStage.id, node.id, 1)}
-                            style={{ fontSize: 11, padding: '3px 6px', border: 0, background: '#e8eaed', color: '#4e5968', borderRadius: 6, cursor: 'pointer' }}
-                          >
-                            ↓
-                          </button>
-                        )}
                         <button
                           onClick={() => deleteNode(node.id)}
                           style={{ fontSize: 11, padding: '3px 6px', border: 0, color: '#f04452', background: '#fff0f1', borderRadius: 6, cursor: 'pointer' }}

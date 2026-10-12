@@ -55,7 +55,6 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
   const open = useBoardStore((s) => s.open)
   const renameNode = useBoardStore((s) => s.renameNode)
   const setNodeLine = useBoardStore((s) => s.setNodeLine)
-  const moveNode = useBoardStore((s) => s.moveNode)
   const insertNodeAfter = useBoardStore((s) => s.insertNodeAfter)
   const deleteNode = useBoardStore((s) => s.deleteNode)
   const addCampaign = useBoardStore((s) => s.addCampaign)
@@ -248,40 +247,30 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
-              onClick={() => moveNode(stage.id, node.id, -1)}
-              style={{ fontSize: 11, padding: '4px 7px', border: 0, background: '#f2f4f6', color: '#4e5968', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
-            >
-              ◀
-            </button>
-            <button
-              onClick={() => moveNode(stage.id, node.id, 1)}
-              style={{ fontSize: 11, padding: '4px 7px', border: 0, background: '#f2f4f6', color: '#4e5968', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
-            >
-              ▶
-            </button>
-            <button
               onClick={() => addCampaign(node.id, 'top')}
               style={{ flex: 1, fontSize: 11, padding: 4, border: 0, background: '#f2f4f6', color: '#4e5968', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
             >
-              + 위 캠페인
+              + 위
             </button>
             <button
               onClick={() => addCampaign(node.id, 'bottom')}
               style={{ flex: 1, fontSize: 11, padding: 4, border: 0, background: '#f2f4f6', color: '#4e5968', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
             >
-              + 아래 캠페인
-            </button>
-            <button
-              onClick={() => setPickerPos('top')}
-              style={{ flex: 1, fontSize: 11, padding: 4, border: 0, background: '#eef4ff', color: '#3182f6', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
-            >
-              Braze 추가
+              + 아래
             </button>
             <button
               onClick={() => deleteNode(node.id)}
               style={{ fontSize: 11, padding: '4px 7px', border: 0, color: '#f04452', background: '#fff0f1', fontWeight: 600, borderRadius: 8, cursor: 'pointer' }}
             >
               삭제
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => setPickerPos('top')}
+              style={{ flex: 1, fontSize: 11, padding: '6px 4px', border: 0, background: '#eef4ff', color: '#3182f6', fontWeight: 700, borderRadius: 8, cursor: 'pointer' }}
+            >
+              Braze에서 추가
             </button>
           </div>
         </div>
