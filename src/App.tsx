@@ -6,12 +6,14 @@ import Login from './components/Login'
 import Header from './components/Header'
 import Legend from './components/Legend'
 import FunnelBoard from './components/FunnelBoard'
-import DetailPanel from './components/DetailPanel'
+import RightPanel, { PANEL_WIDTH } from './components/RightPanel'
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const dataLoaded = useBoardStore((s) => s.dataLoaded)
   const loadFromSupabase = useBoardStore((s) => s.loadFromSupabase)
+  const edit = useBoardStore((s) => s.edit)
+  const sel = useBoardStore((s) => s.sel)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -37,12 +39,23 @@ export default function App() {
     return <div style={{ minHeight: '100vh', background: '#f2f4f6' }} />
   }
 
+  const panelVisible = edit || !!sel
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Header />
       <Legend />
-      <FunnelBoard />
-      <DetailPanel />
+      <div
+        style={{
+          flex: 1,
+          marginRight: panelVisible ? PANEL_WIDTH : 0,
+          transition: 'margin-right .2s ease',
+          minHeight: 0,
+        }}
+      >
+        <FunnelBoard />
+      </div>
+      <RightPanel />
     </div>
   )
 }

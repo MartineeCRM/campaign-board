@@ -56,6 +56,8 @@ export interface BoardStore extends BoardState {
   cancelEdit: () => void
   selectCampaign: (id: string | null) => void
   toggleOpen: (id: string) => void
+  selectedStageId: string | null
+  selectStage: (id: string | null) => void
   setClient: (id: string) => void
   addClient: () => void
   deleteClient: () => void
@@ -111,6 +113,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   edit: false,
   open: {},
   sel: null,
+  selectedStageId: null,
   sync: Date.now(),
   dataLoaded: false,
   zoom: 1,
@@ -163,7 +166,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         clients = seed()
         for (const client of clients) await persistClient(client)
       }
-      set({ clients, clientId: clients[0].id, dataLoaded: true, sync: Date.now() })
+      const prevId = get().clientId
+      const clientId = clients.some((c) => c.id === prevId) ? prevId : clients[0].id
+      set({ clients, clientId, dataLoaded: true, sync: Date.now() })
     } finally {
       loadInFlight = false
     }
@@ -191,6 +196,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       return { clients, clientId, edit: false }
     }),
   selectCampaign: (id) => set({ sel: id }),
+  selectStage: (id) => set({ selectedStageId: id }),
   toggleOpen: (id) => set((s) => ({ open: { ...s.open, [id]: !s.open[id] } })),
 
   setClient: (id) => set({ clientId: id, open: {}, sel: null }),
