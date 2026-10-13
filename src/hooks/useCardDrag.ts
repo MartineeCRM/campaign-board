@@ -21,6 +21,12 @@ interface DragPosition {
  * (see CampaignCard) that stops pointerdown propagation, so the card body
  * has no click of its own left to protect, and capturing immediately is
  * both simpler and more reliable.
+ *
+ * Drag deltas from e.clientX/Y are in viewport pixels. The board applies a
+ * CSS zoom to its inner container, so card positions (CSS px inside the
+ * zoomed element) and viewport px differ by the zoom factor. We capture the
+ * zoom at drag-start and divide deltas by it so the card follows the pointer
+ * 1:1 at any zoom level.
  */
 export function useCardDrag(
   campaignId: string,
@@ -31,23 +37,25 @@ export function useCardDrag(
   trackW: number
 ) {
   const moveCampaignTo = useBoardStore((s) => s.moveCampaignTo)
+  const zoom = useBoardStore((s) => s.zoom)
   const [drag, setDrag] = useState<DragPosition>({ dragging: false, x, y })
-  const origin = useRef({ pointerX: 0, pointerY: 0, cardX: x, cardY: y })
+  const origin = useRef({ pointerX: 0, pointerY: 0, cardX: x, cardY: y, zoom: 1 })
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-      origin.current = { pointerX: e.clientX, pointerY: e.clientY, cardX: x, cardY: y }
+      origin.current = { pointerX: e.clientX, pointerY: e.clientY, cardX: x, cardY: y, zoom }
       setDrag({ dragging: true, x, y })
     },
-    [x, y]
+    [x, y, zoom]
   )
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     setDrag((d) => {
       if (!d.dragging) return d
-      const dx = e.clientX - origin.current.pointerX
-      const dy = e.clientY - origin.current.pointerY
+      const z = origin.current.zoom
+      const dx = (e.clientX - origin.current.pointerX) / z
+      const dy = (e.clientY - origin.current.pointerY) / z
       return { dragging: true, x: origin.current.cardX + dx, y: origin.current.cardY + dy }
     })
   }, [])
