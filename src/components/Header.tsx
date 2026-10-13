@@ -218,7 +218,11 @@ export default function Header() {
 
         {edit && clients.length > 1 && (
           <button
-            onClick={deleteClient}
+            onClick={() => {
+              if (window.confirm(`"${client.name}" 고객사를 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) {
+                deleteClient()
+              }
+            }}
             style={{
               fontSize: 12,
               padding: '7px 10px',
