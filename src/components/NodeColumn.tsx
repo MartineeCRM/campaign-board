@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useBoardStore } from '../store'
 import { useCardDrag } from '../hooks/useCardDrag'
 import { cardWidth } from '../utils/format'
@@ -5,40 +6,63 @@ import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from '../utils/geometry'
 import CampaignCard from './CampaignCard'
 import type { Campaign, FunnelNode, Stage } from '../types'
 
-// Matches an expanded card with the placeholder image; collapsed chips are
-// much shorter. Only used to clamp drag bounds, not to measure real layout —
-// a card with a tall custom image can still visually extend past this.
 const EXPANDED_HEIGHT_ESTIMATE = 270
 const COLLAPSED_HEIGHT_ESTIMATE = 48
 
 interface DraggableCardProps {
   campaign: Campaign
+  nodeId: string
   expanded: boolean
   notchTop: boolean
   notchBottom: boolean
 }
 
-function DraggableCard({ campaign, expanded, notchTop, notchBottom }: DraggableCardProps) {
+function DraggableCard({ campaign, nodeId, expanded, notchTop, notchBottom }: DraggableCardProps) {
   const width = cardWidth({ channel: campaign.channel, period: campaign.period, name: campaign.name }, expanded)
   const height = expanded ? EXPANDED_HEIGHT_ESTIMATE : COLLAPSED_HEIGHT_ESTIMATE
-  const drag = useCardDrag(campaign.id, campaign.x, campaign.y, width, height, TRACK_WIDTH)
+  const { isDragging, ghostX, ghostY, onPointerDown, onPointerMove, onPointerUp } =
+    useCardDrag(campaign.id, nodeId, campaign.x, campaign.y, width, height)
 
   return (
-    <div
-      onPointerDown={drag.onPointerDown}
-      onPointerMove={drag.onPointerMove}
-      onPointerUp={drag.onPointerUp}
-      style={{
-        position: 'absolute',
-        left: drag.x,
-        top: drag.y,
-        touchAction: 'none',
-        cursor: drag.dragging ? 'grabbing' : 'grab',
-        zIndex: drag.dragging ? 5 : 1,
-      }}
-    >
-      <CampaignCard campaign={campaign} expanded={expanded} notchTop={notchTop} notchBottom={notchBottom} />
-    </div>
+    <>
+      {/* Original slot — stays at stored position, fades to placeholder during drag */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        style={{
+          position: 'absolute',
+          left: campaign.x,
+          top: campaign.y,
+          touchAction: 'none',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          zIndex: 1,
+          opacity: isDragging ? 0.25 : 1,
+        }}
+      >
+        <CampaignCard campaign={campaign} expanded={expanded} notchTop={notchTop} notchBottom={notchBottom} />
+      </div>
+
+      {/* Ghost — rendered into document.body so it floats above the whole board */}
+      {isDragging &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              left: ghostX,
+              top: ghostY,
+              pointerEvents: 'none',
+              zIndex: 9999,
+              opacity: 0.9,
+              borderRadius: 12,
+              boxShadow: '0 12px 40px rgba(0,20,60,.22)',
+            }}
+          >
+            <CampaignCard campaign={campaign} expanded={expanded} notchTop={false} notchBottom={false} />
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
 
@@ -51,21 +75,14 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
 
   const top = node.campaigns.filter((c) => c.pos === 'top')
   const bottom = node.campaigns.filter((c) => c.pos === 'bottom')
-  // "closest to the spine" picks the notch target: for top cards that's the
-  // largest y (nearest the spine from above); for bottom cards, the smallest y.
   const closestTopId = top.length ? top.reduce((a, b) => (a.y > b.y ? a : b)).id : null
   const closestBottomId = bottom.length ? bottom.reduce((a, b) => (a.y < b.y ? a : b)).id : null
 
   return (
-    <div
-      style={{
-        flex: '0 0 auto',
-        minWidth: 284,
-        padding: '0 16px',
-        boxSizing: 'border-box',
-      }}
-    >
+    <div style={{ flex: '0 0 auto', minWidth: 284, padding: '0 16px', boxSizing: 'border-box' }}>
+      {/* data-node-id marks this track for cross-node drop detection */}
       <div
+        data-node-id={node.id}
         style={{
           position: 'relative',
           width: TRACK_WIDTH,
@@ -171,6 +188,7 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
           <DraggableCard
             key={c.id}
             campaign={c}
+            nodeId={node.id}
             expanded={mode === 'full' || !!open[c.id]}
             notchTop={false}
             notchBottom={c.id === closestTopId}
@@ -180,12 +198,12 @@ export default function NodeColumn({ stage, node }: { stage: Stage; node: Funnel
           <DraggableCard
             key={c.id}
             campaign={c}
+            nodeId={node.id}
             expanded={mode === 'full' || !!open[c.id]}
             notchTop={c.id === closestBottomId}
             notchBottom={false}
           />
         ))}
-
       </div>
     </div>
   )

@@ -77,6 +77,7 @@ export interface BoardStore extends BoardState {
   importBrazeCampaigns: (nodeId: string, pos: CardPos, items: { brazeId: string; brazeType: 'campaign' | 'canvas'; name: string }[]) => void
   updateCampaign: (campaignId: string, patch: Partial<Campaign>) => void
   moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
+  moveCampaignToNode: (campaignId: string, targetNodeId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
   deleteCampaign: (campaignId: string) => void
   loadFromSupabase: () => Promise<void>
   zoom: number
@@ -433,6 +434,35 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         campaign.x = clamped.x
         campaign.y = clamped.y
         campaign.pos = posFromY(clamped.y, cardH)
+      })
+    ),
+  moveCampaignToNode: (campaignId, targetNodeId, x, y, cardW, cardH, trackW) =>
+    set((s) =>
+      withClient(s, (c) => {
+        // Detach from current node
+        let campaign: Campaign | null = null
+        outer: for (const st of c.stages) {
+          for (const n of st.nodes) {
+            const ci = n.campaigns.findIndex((k) => k.id === campaignId)
+            if (ci !== -1) {
+              ;[campaign] = n.campaigns.splice(ci, 1)
+              break outer
+            }
+          }
+        }
+        if (!campaign) return
+        // Attach to target node with clamped position
+        for (const st of c.stages) {
+          const targetNode = st.nodes.find((n) => n.id === targetNodeId)
+          if (targetNode) {
+            const clamped = clampCardPosition(x, y, cardW, cardH, trackW)
+            campaign.x = clamped.x
+            campaign.y = clamped.y
+            campaign.pos = posFromY(clamped.y, cardH)
+            targetNode.campaigns.push(campaign)
+            return
+          }
+        }
       })
     ),
   deleteCampaign: (campaignId) =>
