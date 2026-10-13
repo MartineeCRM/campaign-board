@@ -25,7 +25,6 @@ export default function Header() {
   const setMode = useBoardStore((s) => s.setMode)
   const enterEdit = useBoardStore((s) => s.enterEdit)
   const confirmEdit = useBoardStore((s) => s.confirmEdit)
-  const cancelEdit = useBoardStore((s) => s.cancelEdit)
   const zoom = useBoardStore((s) => s.zoom)
   const zoomIn = useBoardStore((s) => s.zoomIn)
   const zoomOut = useBoardStore((s) => s.zoomOut)
@@ -197,38 +196,24 @@ export default function Header() {
           </button>
         </div>
 
-        {edit && (
-          <button
-            onClick={cancelEdit}
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              padding: '10px 16px',
-              border: '1px solid #e5e8eb',
-              borderRadius: 10,
-              color: '#4e5968',
-              background: '#fff',
-              cursor: 'pointer',
-            }}
-          >
-            취소
-          </button>
-        )}
-
         <button
           onClick={edit ? confirmEdit : enterEdit}
           style={{
             fontSize: 13,
             fontWeight: 700,
-            padding: '10px 18px',
-            border: 0,
+            padding: '10px 16px',
+            border: `1.5px solid ${edit ? '#3182f6' : '#191f28'}`,
             borderRadius: 10,
-            color: '#fff',
+            color: edit ? '#3182f6' : '#191f28',
+            background: '#fff',
             cursor: 'pointer',
-            background: edit ? '#3182f6' : '#191f28',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
           }}
         >
-          {edit ? '편집 완료' : '편집'}
+          {edit ? '보기모드' : '편집모드'}
+          <span style={{ fontSize: 11, opacity: 0.7 }}>{'>'}</span>
         </button>
 
         {edit && clients.length > 1 && (
