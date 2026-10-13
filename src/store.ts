@@ -84,6 +84,9 @@ export interface BoardStore extends BoardState {
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
+  // Panel resize
+  panelWidth: number
+  setPanelWidth: (w: number) => void
   // Braze sync
   isSyncing: boolean
   syncError: string | null
@@ -118,6 +121,8 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   sync: Date.now(),
   dataLoaded: false,
   zoom: 1,
+  panelWidth: 320,
+  setPanelWidth: (w) => set({ panelWidth: w }),
   isSyncing: false,
   syncError: null,
 
