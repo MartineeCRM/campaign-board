@@ -1,13 +1,19 @@
+import { useRef } from 'react'
 import { useBoardStore } from '../store'
 import { cardWidth, formatCount, pct } from '../utils/format'
+import { displayedConversionCount, getMetrics } from '../utils/metrics'
 import type { Campaign, Channel, Status } from '../types'
+import { attachedCampaignImages, campaignImages, campaignImagesForStep, signedCampaignImageUrl } from '../utils/campaign-images'
+import CampaignImageAttachments from './CampaignImageAttachments'
+import CampaignImageGallery from './CampaignImageGallery'
+
 
 const STATUS_META: Record<Status, { label: string; color: string }> = {
   alwayson: { label: 'Always-On', color: '#1a9a4a' },
   experiment: { label: 'Experiment', color: '#3182f6' },
   stopped: { label: 'Stopped', color: '#8b95a1' },
 }
-const CHANNELS: Channel[] = ['Push', 'Kakao', 'Email', 'In-app', 'SMS']
+const CHANNELS: Channel[] = ['Push', 'Kakao', 'Email', 'In-app', 'SMS', 'Banner', 'Webhook']
 
 interface Props {
   campaign: Campaign
@@ -18,15 +24,27 @@ interface Props {
 
 export default function CampaignCard({ campaign: k, expanded, notchTop, notchBottom }: Props) {
   const edit = useBoardStore((s) => s.edit)
+  const conversionEventIndex = useBoardStore((s) => s.currentClient().conversionEventIndex ?? 0)
   const mode = useBoardStore((s) => s.mode)
   const toggleOpen = useBoardStore((s) => s.toggleOpen)
   const selectCampaign = useBoardStore((s) => s.selectCampaign)
   const updateCampaign = useBoardStore((s) => s.updateCampaign)
   const deleteCampaign = useBoardStore((s) => s.deleteCampaign)
+  const addCampaignImages = useBoardStore((s) => s.addCampaignImages)
+  const removeCampaignImage = useBoardStore((s) => s.removeCampaignImage)
+  const reorderCampaignImages = useBoardStore((s) => s.reorderCampaignImages)
+  const refreshAttempted = useRef(new Set<string>())
 
   const status = STATUS_META[k.status]
-  const isLive = k.status !== 'stopped'
+  const isLive = k.brazeIsActive === true
+  const isOff = k.brazeIsActive === false
   const width = cardWidth({ channel: k.channel, period: k.period, name: k.name }, expanded)
+  const images = k.brazeType === 'canvas' ? attachedCampaignImages(k) : campaignImages(k)
+  const galleryImages = k.brazeType === 'canvas' && k.canvasSteps?.length
+    ? [...k.canvasSteps.flatMap((step) => campaignImagesForStep(images, step.id, k.canvasSteps!.length)),
+      ...images.filter((image) => !image.stepId && k.canvasSteps!.length > 1)]
+    : images
+  const displayedConversions = displayedConversionCount(k, conversionEventIndex)
 
   const expand = () => toggleOpen(k.id)
 
@@ -136,7 +154,7 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
             {k.name}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-            {pct(k.convs, k.sent)}
+            {k.brazeType === 'canvas' ? formatCount(displayedConversions) : pct(displayedConversions, k.sent)}
           </div>
           <div style={{ fontSize: 10.5, color: '#6f6f6d' }}>{k.channel}</div>
           {chevron}
@@ -183,6 +201,32 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
                 }}
               />
               LIVE
+            </div>
+          )}
+          {isOff && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '3px 8px 3px 7px',
+                borderRadius: 999,
+                background: '#f2f4f6',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '.04em',
+                color: '#8b95a1',
+              }}
+            >
+              <div
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: '#8b95a1',
+                }}
+              />
+              OFF
             </div>
           )}
           <div
@@ -234,7 +278,7 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
               color: '#4e5968',
             }}
           >
-            {k.channel}
+            {k.brazeType === 'canvas' ? 'Canvas' : k.channel}
           </div>
           <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, lineHeight: 1.4, letterSpacing: '-.01em' }}>
             {k.name}
@@ -244,19 +288,18 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
           )}
         </div>
 
-        {k.img ? (
-          <img
-            src={k.img}
-            alt=""
-            style={{
-              display: 'block',
-              marginTop: 12,
-              width: '100%',
-              height: 'auto',
-              maxHeight: 360,
-              objectFit: 'cover',
-              borderRadius: 12,
-              background: '#f2f4f6',
+        {galleryImages.length ? (
+          <CampaignImageGallery
+            campaignId={k.id}
+            images={galleryImages}
+            compact
+            onImageError={(image) => {
+              if (!image.storagePath || refreshAttempted.current.has(image.storagePath)) return
+              refreshAttempted.current.add(image.storagePath)
+              void signedCampaignImageUrl(image.storagePath).then((url) => {
+                const refreshed = (k.images ?? []).map((entry) => entry.key === image.key ? { ...entry, url } : entry)
+                updateCampaign(k.id, { images: refreshed })
+              }).catch(() => undefined)
             }}
           />
         ) : (
@@ -274,9 +317,17 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
               color: '#8b95a1',
             }}
           >
-            캠페인 이미지
+            {k.brazeType === 'canvas' ? '캔버스 이미지' : '캠페인 이미지'}
           </div>
         )}
+
+        {edit && (k.brazeType !== 'canvas' || (k.canvasSteps?.length ?? 0) <= 1) && <CampaignImageAttachments
+          campaignId={k.id}
+          images={images}
+          onAdd={(files) => void addCampaignImages(k.id, files).catch((error) => window.alert(error instanceof Error ? error.message : String(error)))}
+          onRemove={(path) => void removeCampaignImage(k.id, path).catch((error) => window.alert(error instanceof Error ? error.message : String(error)))}
+          onReorder={(paths) => reorderCampaignImages(k.id, paths)}
+        />}
 
         <div
           style={{
@@ -285,21 +336,20 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
             borderRadius: 12,
             background: '#f9fafb',
             display: 'grid',
-            gridTemplateColumns: '1.35fr 1fr 1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             gap: 8,
           }}
         >
-          {[
-            ['발송', formatCount(k.sent)],
-            ['오픈율', pct(k.opens, k.sent)],
-            ['클릭률', pct(k.clicks, k.sent)],
-            ['전환율', pct(k.convs, k.sent)],
-          ].map(([label, value], i) => (
+          {getMetrics(k, conversionEventIndex).map(({ label, count, rate, wowDrop }, i) => (
             <div key={label} style={i > 0 ? { borderLeft: '1px solid #e5e8eb', paddingLeft: 8 } : undefined}>
-              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' }}>
-                {value}
+              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums', display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                {count}
+                {rate && <span style={{ fontSize: 10.5, fontWeight: 500, color: '#8b95a1' }}>({rate})</span>}
               </div>
-              <div style={{ fontSize: 10.5, color: '#8b95a1', marginTop: 3 }}>{label}</div>
+              <div style={{ fontSize: 10.5, color: '#8b95a1', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {wowDrop && <span aria-label="전주 대비 20% 이상 감소" title="전주 대비 20% 이상 감소" style={{ width: 6, height: 6, flex: 'none', borderRadius: '50%', background: '#f04452' }} />}
+                {label}
+              </div>
             </div>
           ))}
         </div>
@@ -317,12 +367,6 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
               cursor: 'default',
             }}
           >
-            <input
-              value={k.img ?? ''}
-              onChange={(e) => updateCampaign(k.id, { img: e.target.value })}
-              placeholder="이미지 URL"
-              style={{ fontSize: 12, padding: '5px 7px', border: '1px solid #e5e8eb', borderRadius: 8 }}
-            />
             <input
               value={k.name}
               onChange={(e) => updateCampaign(k.id, { name: e.target.value })}
@@ -350,13 +394,7 @@ export default function CampaignCard({ campaign: k, expanded, notchTop, notchBot
                 <option value="stopped">Stopped</option>
               </select>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                value={k.period}
-                onChange={(e) => updateCampaign(k.id, { period: e.target.value })}
-                placeholder="기간"
-                style={{ flex: 1, minWidth: 0, fontSize: 12, padding: '5px 7px', border: '1px solid #e5e8eb', borderRadius: 8 }}
-              />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => deleteCampaign(k.id)}
                 style={{

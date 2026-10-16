@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { useBoardStore } from '../store'
 import { supabase } from '../supabase'
 import type { Status } from '../types'
-import BrazeSettingsModal from './BrazeSettingsModal'
 
 const STATUS_META: Record<Status, { label: string; color: string }> = {
   alwayson: { label: 'Always-On', color: '#1a9a4a' },
@@ -11,7 +9,6 @@ const STATUS_META: Record<Status, { label: string; color: string }> = {
 }
 
 export default function Header() {
-  const [brazeOpen, setBrazeOpen] = useState(false)
   const edit = useBoardStore((s) => s.edit)
   const mode = useBoardStore((s) => s.mode)
   const sync = useBoardStore((s) => s.sync)
@@ -29,8 +26,10 @@ export default function Header() {
   const zoomIn = useBoardStore((s) => s.zoomIn)
   const zoomOut = useBoardStore((s) => s.zoomOut)
   const resetZoom = useBoardStore((s) => s.resetZoom)
-  const isSyncing = useBoardStore((s) => s.isSyncing)
-  const syncBraze = useBoardStore((s) => s.syncBraze)
+  const isSyncing = useBoardStore((s) => s.isSyncingAll)
+  const syncAll = useBoardStore((s) => s.syncAll)
+  const syncAllError = useBoardStore((s) => s.syncAllError)
+  const syncAllMessage = useBoardStore((s) => s.syncAllMessage)
 
   const counts: Record<Status, number> = { alwayson: 0, experiment: 0, stopped: 0 }
   for (const stage of client.stages) {
@@ -39,7 +38,8 @@ export default function Header() {
     }
   }
 
-  const syncTime = new Date(sync).toLocaleTimeString('ko-KR', { hour12: false })
+  const syncDate = new Date(sync)
+  const syncDisplay = `${String(syncDate.getFullYear()).slice(2)}/${String(syncDate.getMonth() + 1).padStart(2, '0')}/${String(syncDate.getDate()).padStart(2, '0')} ${syncDate.toLocaleTimeString('ko-KR', { hour12: false })}`
   const segBtn = (active: boolean) => ({
     fontSize: 12,
     fontWeight: 600 as const,
@@ -78,29 +78,60 @@ export default function Header() {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {edit ? (
-          <input
-            value={client.name}
-            onChange={(e) => renameClient(e.target.value)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {edit ? (
+            <input
+              value={client.name}
+              onChange={(e) => renameClient(e.target.value)}
+              style={{
+                fontSize: 24,
+                fontWeight: 700,
+                letterSpacing: '-.03em',
+                padding: '2px 8px',
+                border: '1px solid #e5e8eb',
+                borderRadius: 8,
+                width: 220,
+                color: '#191f28',
+              }}
+            />
+          ) : (
+            <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-.03em', lineHeight: 1.2 }}>
+              {client.name}
+            </div>
+          )}
+          <button
+            onClick={() => void syncAll()}
+            disabled={isSyncing}
+            title="Google Sheets와 Braze 동기화"
+            aria-label="Google Sheets와 Braze 동기화"
             style={{
-              fontSize: 24,
-              fontWeight: 700,
-              letterSpacing: '-.03em',
-              padding: '2px 8px',
-              border: '1px solid #e5e8eb',
-              borderRadius: 8,
-              width: 220,
-              color: '#191f28',
+              width: 24,
+              height: 24,
+              border: 0,
+              borderRadius: 6,
+              background: 'transparent',
+              color: isSyncing ? '#c4c9d0' : '#8b95a1',
+              fontSize: 16,
+              cursor: isSyncing ? 'not-allowed' : 'pointer',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
-          />
-        ) : (
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-.03em', lineHeight: 1.2 }}>
-            {client.name}
+          >
+            <span style={{ display: 'inline-block', animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }}>
+              ↻
+            </span>
+          </button>
+        </div>
+        <div style={{ fontSize: 13, color: '#8b95a1' }}>
+          마지막 동기화 {syncDisplay}
+        </div>
+        {(syncAllError || syncAllMessage) && (
+          <div role={syncAllError ? 'alert' : 'status'} style={{ maxWidth: 520, fontSize: 12, color: syncAllError ? '#c0392b' : '#18864b' }}>
+            {syncAllError ?? syncAllMessage}
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#8b95a1' }}>
-          <span>동기화 {syncTime}</span>
-        </div>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 36px', alignItems: 'baseline' }}>
@@ -135,6 +166,7 @@ export default function Header() {
         <select
           value={clientId}
           onChange={(e) => (e.target.value === '__new' ? addClient() : setClient(e.target.value))}
+          disabled={isSyncing}
           style={{
             fontSize: 13,
             fontWeight: 600,
@@ -239,41 +271,6 @@ export default function Header() {
         )}
 
         <button
-          onClick={() => void syncBraze()}
-          disabled={isSyncing}
-          title="Braze 싱크"
-          style={{
-            fontSize: 12,
-            padding: '7px 10px',
-            border: '1px solid #e5e8eb',
-            background: isSyncing ? '#f2f4f6' : '#fff',
-            color: isSyncing ? '#8b95a1' : '#3182f6',
-            fontWeight: 600,
-            borderRadius: 8,
-            cursor: isSyncing ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {isSyncing ? '싱크 중...' : '↻ Braze'}
-        </button>
-
-        <button
-          onClick={() => setBrazeOpen(true)}
-          title="Braze 연동 설정"
-          style={{
-            fontSize: 12,
-            padding: '7px 10px',
-            border: '1px solid #e5e8eb',
-            background: '#fff',
-            color: '#4e5968',
-            fontWeight: 600,
-            borderRadius: 8,
-            cursor: 'pointer',
-          }}
-        >
-          ⚙ Braze 설정
-        </button>
-
-        <button
           onClick={() => supabase.auth.signOut()}
           title="로그아웃"
           style={{
@@ -291,7 +288,6 @@ export default function Header() {
         </button>
       </div>
 
-      {brazeOpen && <BrazeSettingsModal onClose={() => setBrazeOpen(false)} />}
     </header>
   )
 }

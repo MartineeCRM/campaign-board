@@ -1,11 +1,15 @@
 import { supabase } from './supabase'
-import type { Campaign, CardPos, Channel, Client, FunnelNode, LineStyle, Stage, Status } from './types'
+import type { Campaign, CampaignImageRecord, CanvasStep, CardPos, Channel, Client, FunnelNode, LineStyle, Stage, Status } from './types'
+import { imageRecords, isCampaignImageRecord, signedCampaignImage } from './utils/campaign-images'
 
 // --- DB row shapes (snake_case, matching supabase/migrations/0001_init.sql) ---
 
 interface ClientRow {
   id: string
   name: string
+  sheets_tab?: string | null
+  iam_click_count?: 'first' | 'both' | null
+  conversion_event_index?: number | null
 }
 interface StageRow {
   id: string
@@ -27,14 +31,19 @@ interface CampaignRow {
   node_id: string
   braze_id: string | null
   braze_type: 'campaign' | 'canvas' | null
+  braze_is_active: boolean | null
   name: string
   channel: Channel
   status: Status
   pos: CardPos
   x: number
   y: number
+  board_x: number | null
+  board_y: number | null
   period: string
   img: string | null
+  images: CampaignImageRecord[] | null
+  canvas_steps?: CanvasStep[] | null
   delivery: string
   trigger_desc: string
   audience: string
@@ -45,11 +54,22 @@ interface CampaignRow {
   opens: number
   clicks: number
   convs: number
+  conversion_counts?: number[] | null
+  wow_drops?: Partial<Record<'sent' | 'opens' | 'clicks' | 'convs', boolean>> | null
   last_synced_at: string | null
   created_at?: string
 }
 
-function campaignFromRow(row: CampaignRow): Campaign {
+async function campaignFromRow(row: CampaignRow): Promise<Campaign> {
+  const images = await Promise.all((Array.isArray(row.images) ? row.images : [])
+    .filter(isCampaignImageRecord)
+    .map(async (image) => {
+      try {
+        return await signedCampaignImage(image)
+      } catch {
+        return { ...image, key: image.storagePath, url: '' }
+      }
+    }))
   return {
     id: row.id,
     name: row.name,
@@ -58,12 +78,18 @@ function campaignFromRow(row: CampaignRow): Campaign {
     pos: row.pos,
     x: row.x,
     y: row.y,
+    boardX: row.board_x ?? undefined,
+    boardY: row.board_y ?? undefined,
     sent: row.sent,
     opens: row.opens,
     clicks: row.clicks,
     convs: row.convs,
+    conversionCounts: row.conversion_counts ?? undefined,
+    wowDrops: row.wow_drops ?? undefined,
     period: row.period,
     img: row.img ?? undefined,
+    images,
+    canvasSteps: Array.isArray(row.canvas_steps) ? row.canvas_steps : undefined,
     delivery: row.delivery,
     trigger: row.trigger_desc,
     audience: row.audience,
@@ -72,6 +98,7 @@ function campaignFromRow(row: CampaignRow): Campaign {
     link: row.link,
     brazeId: row.braze_id ?? undefined,
     brazeType: row.braze_type ?? undefined,
+    brazeIsActive: row.braze_is_active ?? undefined,
     lastSyncedAt: row.last_synced_at ?? undefined,
   }
 }
@@ -82,14 +109,19 @@ function campaignToRow(campaign: Campaign, nodeId: string): CampaignRow {
     node_id: nodeId,
     braze_id: campaign.brazeId ?? null,
     braze_type: campaign.brazeType ?? null,
+    braze_is_active: campaign.brazeIsActive ?? null,
     name: campaign.name,
     channel: campaign.channel,
     status: campaign.status,
     pos: campaign.pos,
     x: campaign.x,
     y: campaign.y,
+    board_x: campaign.boardX ?? null,
+    board_y: campaign.boardY ?? null,
     period: campaign.period,
     img: campaign.img ?? null,
+    images: imageRecords(campaign.images ?? []),
+    canvas_steps: campaign.canvasSteps ?? [],
     delivery: campaign.delivery,
     trigger_desc: campaign.trigger,
     audience: campaign.audience,
@@ -100,6 +132,8 @@ function campaignToRow(campaign: Campaign, nodeId: string): CampaignRow {
     opens: campaign.opens,
     clicks: campaign.clicks,
     convs: campaign.convs,
+    conversion_counts: campaign.conversionCounts ?? [campaign.convs],
+    wow_drops: campaign.wowDrops ?? {},
     last_synced_at: campaign.lastSyncedAt ?? null,
   }
 }
@@ -110,7 +144,7 @@ function campaignToRow(campaign: Campaign, nodeId: string): CampaignRow {
 export async function loadAllClients(): Promise<Client[]> {
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name, stages(id, name, color, position, funnel_nodes(id, label, sub, line, position, campaigns(*)))')
+    .select('id, name, sheets_tab, iam_click_count, conversion_event_index, stages(id, name, color, position, funnel_nodes(id, label, sub, line, position, campaigns(*)))')
 
   if (error) throw error
 
@@ -118,32 +152,35 @@ export async function loadAllClients(): Promise<Client[]> {
   type RawStage = StageRow & { funnel_nodes: RawNode[] }
   type RawClient = ClientRow & { stages: RawStage[] }
 
-  return ((data ?? []) as unknown as RawClient[]).map(
-    (c): Client => ({
+  return Promise.all(((data ?? []) as unknown as RawClient[]).map(
+    async (c): Promise<Client> => ({
       id: c.id,
       name: c.name,
-      stages: [...c.stages]
+      sheetsTab: c.sheets_tab ?? undefined,
+      iamClickCount: c.iam_click_count ?? 'first',
+      conversionEventIndex: c.conversion_event_index ?? 0,
+      stages: await Promise.all([...c.stages]
         .sort((a, b) => a.position - b.position)
         .map(
-          (s): Stage => ({
+          async (s): Promise<Stage> => ({
             id: s.id,
             name: s.name,
             color: s.color,
-            nodes: [...s.funnel_nodes]
+            nodes: await Promise.all([...s.funnel_nodes]
               .sort((a, b) => a.position - b.position)
               .map(
-                (n): FunnelNode => ({
+                async (n): Promise<FunnelNode> => ({
                   id: n.id,
                   label: n.label,
                   sub: n.sub,
                   line: n.line,
-                  campaigns: n.campaigns.map(campaignFromRow),
+                  campaigns: await Promise.all(n.campaigns.map(campaignFromRow)),
                 })
-              ),
+              )),
           })
-        ),
+        )),
     })
-  )
+  ))
 }
 
 async function deleteMissing(
@@ -185,7 +222,13 @@ export async function persistClient(client: Client): Promise<void> {
     })
   })
 
-  const { error: clientError } = await supabase.from('clients').upsert({ id: client.id, name: client.name })
+  const { error: clientError } = await supabase.from('clients').upsert({
+    id: client.id,
+    name: client.name,
+    sheets_tab: client.sheetsTab ?? null,
+    iam_click_count: client.iamClickCount ?? 'first',
+    conversion_event_index: client.conversionEventIndex ?? 0,
+  })
   if (clientError) throw clientError
 
   if (stageRows.length > 0) {

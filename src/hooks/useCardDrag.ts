@@ -1,111 +1,88 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useBoardStore } from '../store'
-import { TRACK_WIDTH } from '../utils/geometry'
+import { boardPositionFromGhost, clampCardPosition } from '../utils/geometry'
 
-interface Ghost {
-  x: number // viewport left of card
-  y: number // viewport top of card
-}
+interface Ghost { x: number; y: number }
 
-/**
- * Cross-node drag-and-drop for campaign cards.
- *
- * During drag the card renders as a fixed-position ghost (via a portal in
- * NodeColumn). The original slot stays where it is with reduced opacity as a
- * placeholder. On pointer-up we query every [data-node-id] track element to
- * find which node is under the drop point, translate the viewport coords back
- * to that track's local canvas coords, and call either moveCampaignTo (same
- * node) or moveCampaignToNode (different node).
- *
- * Drag deltas from e.clientX/Y are in viewport pixels. The board applies a
- * CSS zoom to its container, so card positions (CSS px inside the zoomed
- * element) differ by the zoom factor. We capture zoom at drag-start and
- * divide deltas by it so the ghost follows the pointer 1:1.
- */
-export function useCardDrag(
-  campaignId: string,
-  nodeId: string,
-  _x: number,
-  _y: number,
-  cardW: number,
-  cardH: number,
-) {
-  const moveCampaignTo = useBoardStore((s) => s.moveCampaignTo)
-  const moveCampaignToNode = useBoardStore((s) => s.moveCampaignToNode)
+/** Move a card anywhere on the board canvas; its source node does not limit placement. */
+export function useCardDrag(campaignId: string, cardW: number, cardH: number, trackH: number) {
+  const moveCampaignOnBoard = useBoardStore((s) => s.moveCampaignOnBoard)
   const zoom = useBoardStore((s) => s.zoom)
-
   const [isDragging, setIsDragging] = useState(false)
   const [ghost, setGhost] = useState<Ghost>({ x: 0, y: 0 })
   const isDraggingRef = useRef(false)
-  const origin = useRef({ pointerX: 0, pointerY: 0, ghostX: 0, ghostY: 0, zoom: 1, nodeId: '' })
+  const activePointer = useRef<{ element: HTMLElement; id: number } | null>(null)
+  const origin = useRef({ pointerX: 0, pointerY: 0, ghostX: 0, ghostY: 0, zoom: 1 })
 
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      const el = e.currentTarget as HTMLElement
-      const rect = el.getBoundingClientRect()
-      el.setPointerCapture(e.pointerId)
-      origin.current = {
-        pointerX: e.clientX,
-        pointerY: e.clientY,
-        ghostX: rect.left,
-        ghostY: rect.top,
-        zoom,
-        nodeId,
-      }
-      setGhost({ x: rect.left, y: rect.top })
-      isDraggingRef.current = true
-      setIsDragging(true)
-    },
-    [zoom, nodeId],
-  )
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
+  const cancelDrag = useCallback(() => {
     if (!isDraggingRef.current) return
-    const dx = e.clientX - origin.current.pointerX
-    const dy = e.clientY - origin.current.pointerY
-    setGhost({ x: origin.current.ghostX + dx, y: origin.current.ghostY + dy })
+    isDraggingRef.current = false
+    setIsDragging(false)
+    const pointer = activePointer.current
+    activePointer.current = null
+    if (pointer?.element.hasPointerCapture(pointer.id)) pointer.element.releasePointerCapture(pointer.id)
   }, [])
 
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      isDraggingRef.current = false
-      setIsDragging(false)
-      ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  useEffect(() => {
+    if (!isDragging) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      cancelDrag()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isDragging, cancelDrag])
 
-      const dx = e.clientX - origin.current.pointerX
-      const dy = e.clientY - origin.current.pointerY
-      const z = origin.current.zoom
-      const ghostX = origin.current.ghostX + dx
-      const ghostY = origin.current.ghostY + dy
+  const onPointerDown = useCallback((event: React.PointerEvent) => {
+    const element = event.currentTarget as HTMLElement
+    const rect = element.getBoundingClientRect()
+    element.setPointerCapture(event.pointerId)
+    activePointer.current = { element, id: event.pointerId }
+    origin.current = { pointerX: event.clientX, pointerY: event.clientY, ghostX: rect.left, ghostY: rect.top, zoom }
+    setGhost({ x: rect.left, y: rect.top })
+    isDraggingRef.current = true
+    setIsDragging(true)
+  }, [zoom])
 
-      // Find which node track the ghost was dropped onto by checking bounding
-      // rects of every [data-node-id] element. The ghost itself is
-      // position:fixed and pointer-events:none so it doesn't interfere.
-      let targetNodeId: string | null = null
-      let targetRect: DOMRect | null = null
-      for (const el of document.querySelectorAll<HTMLElement>('[data-node-id]')) {
-        const r = el.getBoundingClientRect()
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-          targetNodeId = el.dataset.nodeId ?? null
-          targetRect = r
-          break
-        }
-      }
+  const onPointerMove = useCallback((event: React.PointerEvent) => {
+    if (!isDraggingRef.current) return
+    setGhost({
+      x: origin.current.ghostX + event.clientX - origin.current.pointerX,
+      y: origin.current.ghostY + event.clientY - origin.current.pointerY,
+    })
+  }, [])
 
-      if (!targetNodeId || !targetRect) return // dropped outside any track
+  const onPointerUp = useCallback((event: React.PointerEvent) => {
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
+    setIsDragging(false)
+    const element = event.currentTarget as HTMLElement
+    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
+    activePointer.current = null
 
-      // Translate viewport ghost position → local canvas coords of target track
-      const newX = (ghostX - targetRect.left) / z
-      const newY = (ghostY - targetRect.top) / z
+    const dx = event.clientX - origin.current.pointerX
+    const dy = event.clientY - origin.current.pointerY
+    const ghostX = origin.current.ghostX + dx
+    const ghostY = origin.current.ghostY + dy
+    const canvas = document.querySelector<HTMLElement>('[data-campaign-canvas]')
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const scale = origin.current.zoom
+    const position = boardPositionFromGhost(ghostX, ghostY, rect, scale)
+    const width = rect.width / scale
+    const height = Math.max(trackH, rect.height / scale)
+    const bounded = clampCardPosition(position.x, position.y, cardW, cardH, width, height)
+    moveCampaignOnBoard(campaignId, bounded.x, bounded.y)
+  }, [campaignId, cardW, cardH, trackH, moveCampaignOnBoard])
 
-      if (targetNodeId === origin.current.nodeId) {
-        moveCampaignTo(campaignId, newX, newY, cardW, cardH, TRACK_WIDTH)
-      } else {
-        moveCampaignToNode(campaignId, targetNodeId, newX, newY, cardW, cardH, TRACK_WIDTH)
-      }
-    },
-    [campaignId, cardW, cardH, moveCampaignTo, moveCampaignToNode],
-  )
+  const onPointerCancel = useCallback((event: React.PointerEvent) => {
+    isDraggingRef.current = false
+    setIsDragging(false)
+    const element = event.currentTarget as HTMLElement
+    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
+    activePointer.current = null
+  }, [])
 
-  return { isDragging, ghostX: ghost.x, ghostY: ghost.y, onPointerDown, onPointerMove, onPointerUp }
+  return { isDragging, ghostX: ghost.x, ghostY: ghost.y, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }
 }

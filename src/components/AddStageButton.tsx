@@ -1,12 +1,13 @@
 import { useBoardStore } from '../store'
-import { SPINE_Y, TRACK_HEIGHT } from '../utils/geometry'
+import { boardTrackHeight, SPINE_Y } from '../utils/geometry'
 
 export default function AddStageButton() {
   const addStage = useBoardStore((s) => s.addStage)
+  const trackHeight = useBoardStore((s) => boardTrackHeight([s.currentClient()], s.open, s.cardHeights))
 
   return (
     <div style={{ flex: '0 0 auto', width: 140 }}>
-      <div style={{ position: 'relative', height: TRACK_HEIGHT }}>
+      <div style={{ position: 'relative', height: trackHeight }}>
         <div style={{ position: 'absolute', left: 0, width: 40, top: SPINE_Y, borderTop: '2px dashed #b0b8c1' }} />
         <button
           onClick={addStage}

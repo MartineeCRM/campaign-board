@@ -2,6 +2,7 @@ import { useBoardStore } from '../store'
 import StageColumn from './StageColumn'
 import NodeColumn from './NodeColumn'
 import AddStageButton from './AddStageButton'
+import CampaignCardsLayer from './CampaignCardsLayer'
 
 export default function FunnelBoard() {
   const edit = useBoardStore((s) => s.edit)
@@ -12,18 +13,21 @@ export default function FunnelBoard() {
     <div style={{ overflowX: 'auto', padding: '28px 48px 72px', flex: 1 }}>
       <div
         style={{
+          position: 'relative',
           display: 'flex',
           alignItems: 'flex-start',
           width: 'max-content',
           minWidth: '100%',
           zoom,
         }}
+        data-campaign-canvas
       >
         {client.stages.flatMap((stage) => [
           <StageColumn key={stage.id} stage={stage} />,
           ...stage.nodes.map((node) => <NodeColumn key={node.id} stage={stage} node={node} />),
         ])}
         {edit && <AddStageButton />}
+        <CampaignCardsLayer />
       </div>
     </div>
   )

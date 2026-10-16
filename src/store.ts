@@ -7,6 +7,9 @@ import { clampCardPosition, posFromY } from './utils/geometry'
 import { deleteClientRow, loadAllClients, persistClient } from './persistence'
 import type { Campaign, CardPos } from './types'
 import { supabase } from './supabase'
+import { CAMPAIGN_IMAGE_BUCKET, reorderImageSubset, signedCampaignImageUrl } from './utils/campaign-images'
+import { brazeItemKey, getImportedBrazeKeys } from './utils/braze-import'
+import type { CampaignImageRecord } from './types'
 
 export const STAGE_PALETTE = SEED_PALETTE
 
@@ -69,15 +72,22 @@ export interface BoardStore extends BoardState {
   deleteStage: (stageId: string) => void
   addNode: (stageId: string) => void
   renameNode: (nodeId: string, patch: Partial<Pick<FunnelNode, 'label' | 'sub'>>) => void
+  reorderNode: (nodeId: string, targetNodeId: string, insertAfter: boolean) => void
   setNodeLine: (nodeId: string, line: FunnelNode['line']) => void
   moveNode: (stageId: string, nodeId: string, dir: -1 | 1) => void
   insertNodeAfter: (nodeId: string) => void
   deleteNode: (nodeId: string) => void
   addCampaign: (nodeId: string, pos: CardPos) => void
-  importBrazeCampaigns: (nodeId: string, pos: CardPos, items: { brazeId: string; brazeType: 'campaign' | 'canvas'; name: string }[]) => void
+  importBrazeCampaigns: (nodeId: string, pos: CardPos, items: { brazeId: string; brazeType: 'campaign' | 'canvas'; name: string; isActive?: boolean }[]) => void
   updateCampaign: (campaignId: string, patch: Partial<Campaign>) => void
-  moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
-  moveCampaignToNode: (campaignId: string, targetNodeId: string, x: number, y: number, cardW: number, cardH: number, trackW: number) => void
+  addCampaignImages: (campaignId: string, files: File[], stepId?: string) => Promise<void>
+  removeCampaignImage: (campaignId: string, storagePath: string) => Promise<void>
+  reorderCampaignImages: (campaignId: string, storagePaths: string[]) => void
+  moveCampaignOnBoard: (campaignId: string, boardX: number, boardY: number) => void
+  cardHeights: Record<string, number>
+  measureCardHeight: (campaignId: string, height: number) => void
+  moveCampaignTo: (campaignId: string, x: number, y: number, cardW: number, cardH: number, trackW: number, trackH?: number) => void
+  moveCampaignToNode: (campaignId: string, targetNodeId: string, x: number, y: number, cardW: number, cardH: number, trackW: number, trackH?: number) => void
   deleteCampaign: (campaignId: string) => void
   loadFromSupabase: () => Promise<void>
   zoom: number
@@ -91,6 +101,17 @@ export interface BoardStore extends BoardState {
   isSyncing: boolean
   syncError: string | null
   syncBraze: () => Promise<void>
+  isSyncingAll: boolean
+  syncAllError: string | null
+  syncAllMessage: string | null
+  syncAll: () => Promise<void>
+  // Sheets sync
+  isSyncingSheets: boolean
+  syncSheetsError: string | null
+  updateClientSheetsTab: (tab: string) => void
+  updateClientIamClickCount: (count: 'first' | 'both') => void
+  updateClientConversionEventIndex: (index: number) => void
+  syncSheets: () => Promise<void>
 }
 
 // Snapshot of `clients` taken when edit mode is entered, so "취소" can
@@ -98,7 +119,9 @@ export interface BoardStore extends BoardState {
 // state — it never needs to trigger a render, only to be read/written by
 // the enter/confirm/cancel actions below.
 let editSnapshot: Client[] | null = null
+let editUploadedImagePaths = new Set<string>()
 let loadInFlight = false
+let syncAllRunning = false
 
 function findCampaignLocation(client: Client, campaignId: string) {
   for (let si = 0; si < client.stages.length; si++) {
@@ -110,6 +133,40 @@ function findCampaignLocation(client: Client, campaignId: string) {
   return null
 }
 
+function campaignImagePaths(clients: Client[]): Set<string> {
+  const paths = new Set<string>()
+  for (const client of clients) for (const stage of client.stages) for (const node of stage.nodes) for (const campaign of node.campaigns) {
+    for (const image of campaign.images ?? []) if (image.storagePath) paths.add(image.storagePath)
+  }
+  return paths
+}
+
+async function imageDimensions(file: File): Promise<{ width: number; height: number }> {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file)
+    try { return { width: bitmap.width, height: bitmap.height } } finally { bitmap.close() }
+  }
+  const url = URL.createObjectURL(file)
+  try {
+    return await new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      image.onerror = () => reject(new Error(`${file.name}: 이미지 크기를 읽지 못했습니다`))
+      image.src = url
+    })
+  } finally { URL.revokeObjectURL(url) }
+}
+
+async function removeStoredImages(paths: string[]) {
+  if (!paths.length) return
+  const { error } = await supabase.storage.from(CAMPAIGN_IMAGE_BUCKET).remove(paths)
+  if (error) throw error
+}
+
+async function persistClients(clients: Client[]) {
+  await Promise.all(clients.map(persistClient))
+}
+
 export const useBoardStore = create<BoardStore>((set, get) => ({
   clients: [],
   clientId: '',
@@ -119,12 +176,20 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   sel: null,
   selectedStageId: null,
   sync: Date.now(),
+  syncSheetsMessage: null,
   dataLoaded: false,
+  cardHeights: {},
+  measureCardHeight: (campaignId, height) => set((s) => s.cardHeights[campaignId] === height ? s : { cardHeights: { ...s.cardHeights, [campaignId]: height } }),
   zoom: 1,
   panelWidth: 320,
   setPanelWidth: (w) => set({ panelWidth: w }),
   isSyncing: false,
   syncError: null,
+  isSyncingAll: false,
+  syncAllError: null,
+  syncAllMessage: null,
+  isSyncingSheets: false,
+  syncSheetsError: null,
 
   zoomIn: () => set((s) => ({ zoom: Math.min(ZOOM_MAX, Math.round((s.zoom + ZOOM_STEP) * 100) / 100) })),
   zoomOut: () => set((s) => ({ zoom: Math.max(ZOOM_MIN, Math.round((s.zoom - ZOOM_STEP) * 100) / 100) })),
@@ -132,7 +197,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
   syncBraze: async () => {
     const { clientId, isSyncing } = get()
-    if (isSyncing) return
+    if (isSyncing || (get().isSyncingAll && !syncAllRunning)) return
     set({ isSyncing: true, syncError: null })
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -152,11 +217,102 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
       // Reload from DB so synced metrics are reflected immediately
       await get().loadFromSupabase()
-      set({ sync: Date.now() })
     } catch (err) {
       set({ syncError: err instanceof Error ? err.message : String(err) })
     } finally {
-      set({ isSyncing: false })
+      set({ isSyncing: false, sync: Date.now() })
+    }
+  },
+
+  updateClientSheetsTab: (tab) => {
+    const { clientId } = get()
+    set((s) => ({
+      clients: s.clients.map((c) =>
+        c.id === clientId ? { ...c, sheetsTab: tab } : c,
+      ),
+    }))
+    const client = get().clients.find((c) => c.id === clientId)
+    if (client) void persistClient(client)
+  },
+
+  updateClientIamClickCount: (iamClickCount) => {
+    const { clientId } = get()
+    set((s) => ({
+      clients: s.clients.map((c) => c.id === clientId ? { ...c, iamClickCount } : c),
+    }))
+    const client = get().clients.find((c) => c.id === clientId)
+    if (client) void persistClient(client)
+  },
+
+  updateClientConversionEventIndex: (conversionEventIndex) => {
+    const { clientId } = get()
+    set((s) => ({
+      clients: s.clients.map((c) => c.id === clientId ? { ...c, conversionEventIndex } : c),
+    }))
+    const client = get().clients.find((c) => c.id === clientId)
+    if (client) void persistClient(client)
+  },
+
+  syncSheets: async () => {
+    const { clientId, isSyncingSheets } = get()
+    if (isSyncingSheets || (get().isSyncingAll && !syncAllRunning)) return
+    set({ isSyncingSheets: true, syncSheetsError: null, syncSheetsMessage: null })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('로그인이 필요합니다')
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+      const res = await fetch(`${supabaseUrl}/functions/v1/sync-sheets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ clientId }),
+      })
+      const body = await res.json() as {
+        ok?: boolean
+        error?: string
+        rowsWithBrazeId?: number
+        uniqueBrazeIds?: number
+        updatedCampaigns?: number
+        unmatchedIds?: number
+      }
+      if (!res.ok || body.error || body.ok !== true) throw new Error(body.error ?? `HTTP ${res.status}`)
+
+      await get().loadFromSupabase()
+      const updated = body.updatedCampaigns ?? 0
+      const unmatched = body.unmatchedIds ?? 0
+      set({
+        syncSheetsMessage: updated === 0
+          ? `동기화 완료 · 반영된 카드 0개, 보드에 없는 시트 ID ${unmatched}개`
+          : `동기화 완료 · 카드 ${updated}개 반영, 보드에 없는 시트 ID ${unmatched}개`,
+      })
+    } catch (err) {
+      set({ syncSheetsError: err instanceof Error ? err.message : String(err) })
+    } finally {
+      set({ isSyncingSheets: false })
+    }
+  },
+
+  syncAll: async () => {
+    const state = get()
+    if (state.isSyncingAll || state.isSyncing || state.isSyncingSheets) return
+    syncAllRunning = true
+    set({ isSyncingAll: true, syncAllError: null, syncAllMessage: null, syncError: null, syncSheetsError: null })
+    try {
+      await get().syncSheets()
+      const sheetsError = get().syncSheetsError
+      await get().syncBraze()
+      const brazeError = get().syncError
+      const errors = [sheetsError && `Sheets: ${sheetsError}`, brazeError && `Braze: ${brazeError}`].filter(Boolean)
+      set({
+        syncAllError: errors.length ? errors.join(' · ') : null,
+        syncAllMessage: errors.length ? null : 'Sheets와 Braze 동기화 완료',
+      })
+    } finally {
+      syncAllRunning = false
+      set({ isSyncingAll: false })
     }
   },
 
@@ -187,18 +343,33 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
   setMode: (mode) => set({ mode, open: {} }),
   enterEdit: () => {
-    if (editSnapshot === null) editSnapshot = structuredClone(get().clients)
+    if (editSnapshot === null) {
+      editSnapshot = structuredClone(get().clients)
+      editUploadedImagePaths = new Set()
+    }
     set({ edit: true })
   },
   confirmEdit: () => {
+    const oldPaths = campaignImagePaths(editSnapshot ?? [])
+    const currentPaths = campaignImagePaths(get().clients)
+    const removedPaths = new Set([...oldPaths, ...editUploadedImagePaths])
+    const orphanPaths = [...removedPaths].filter((path) => !currentPaths.has(path))
+    const clients = get().clients
     editSnapshot = null
+    editUploadedImagePaths = new Set()
     set({ edit: false })
+    if (orphanPaths.length) void persistClients(clients).then(() => removeStoredImages(orphanPaths)).catch((error) => console.error('이미지 정리 실패', error))
   },
   cancelEdit: () =>
     set((s) => {
       const clients = editSnapshot ?? s.clients
+      const oldPaths = campaignImagePaths(clients)
+      const newPaths = new Set([...campaignImagePaths(s.clients), ...editUploadedImagePaths])
+      const orphanPaths = [...newPaths].filter((path) => !oldPaths.has(path))
       editSnapshot = null
+      editUploadedImagePaths = new Set()
       const clientId = clients.some((c) => c.id === s.clientId) ? s.clientId : clients[0].id
+      if (orphanPaths.length) void persistClients(clients).then(() => removeStoredImages(orphanPaths)).catch((error) => console.error('이미지 정리 실패', error))
       return { clients, clientId, edit: false }
     }),
   selectCampaign: (id) => set({ sel: id }),
@@ -289,6 +460,30 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         }
       })
     ),
+  reorderNode: (nodeId, targetNodeId, insertAfter) =>
+    set((s) => withClient(s, (c) => {
+      if (nodeId === targetNodeId) return
+      let sourceStageIndex = -1
+      let sourceNodeIndex = -1
+      let node: FunnelNode | undefined
+      for (let si = 0; si < c.stages.length; si++) {
+        const ni = c.stages[si].nodes.findIndex((entry) => entry.id === nodeId)
+        if (ni !== -1) {
+          sourceStageIndex = si
+          sourceNodeIndex = ni
+          node = c.stages[si].nodes[ni]
+          break
+        }
+      }
+      if (!node) return
+      const targetStage = c.stages.find((stage) => stage.nodes.some((entry) => entry.id === targetNodeId))
+      if (!targetStage) return
+
+      c.stages[sourceStageIndex].nodes.splice(sourceNodeIndex, 1)
+      const targetIndex = targetStage.nodes.findIndex((entry) => entry.id === targetNodeId)
+      if (targetIndex === -1) return
+      targetStage.nodes.splice(targetIndex + (insertAfter ? 1 : 0), 0, node)
+    })),
   setNodeLine: (nodeId, line) =>
     set((s) =>
       withClient(s, (c) => {
@@ -387,17 +582,23 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   importBrazeCampaigns: (nodeId, pos, items) =>
     set((s) =>
       withClient(s, (c) => {
+        const importedKeys = getImportedBrazeKeys(c)
         for (const st of c.stages) {
           const node = st.nodes.find((x) => x.id === nodeId)
           if (!node) continue
           items.forEach((item) => {
+            const key = brazeItemKey(item.brazeType, item.brazeId)
+            if (importedKeys.has(key)) return
+            importedKeys.add(key)
             const indexInZone = node.campaigns.filter((k) => k.pos === pos).length
             const { x, y } = defaultCardPosition(pos, indexInZone)
             node.campaigns.push({
               id: uid(),
               name: item.name,
               channel: 'Push',
-              status: 'experiment',
+              status: typeof item.isActive === 'boolean'
+                ? (item.isActive ? 'alwayson' : 'stopped')
+                : 'experiment',
               pos,
               x,
               y,
@@ -429,19 +630,78 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         Object.assign(c.stages[loc.si].nodes[loc.ni].campaigns[loc.ci], patch)
       })
     ),
-  moveCampaignTo: (campaignId, x, y, cardW, cardH, trackW) =>
+  addCampaignImages: async (campaignId, files, stepId) => {
+    const client = get().currentClient()
+    if (!client) return
+    const uploaded: string[] = []
+    try {
+      const records: CampaignImageRecord[] = []
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue
+        const { width, height } = await imageDimensions(file)
+        if (!(width > 0 && height > 0)) throw new Error(`${file.name}: 이미지 크기가 올바르지 않습니다`)
+        const safeName = file.name.replace(/[^\w.-]+/g, '_') || 'image'
+        const path = `${campaignId}/${crypto.randomUUID()}-${safeName}`
+        const { error } = await supabase.storage.from(CAMPAIGN_IMAGE_BUCKET).upload(path, file, { contentType: file.type, upsert: false })
+        if (error) throw error
+        uploaded.push(path)
+        records.push({ storagePath: path, width, height, ...(stepId ? { stepId } : {}) })
+      }
+      const location = findCampaignLocation(get().currentClient(), campaignId)
+      if (!location || !records.length) { await removeStoredImages(uploaded); return }
+      const display = await Promise.all(records.map(async (record) => ({ ...record, key: record.storagePath, url: await signedCampaignImageUrl(record.storagePath) })))
+      const latestClient = get().currentClient()
+      const latestLocation = findCampaignLocation(latestClient, campaignId)
+      if (!latestLocation) { await removeStoredImages(uploaded); return }
+      const current = latestClient.stages[latestLocation.si].nodes[latestLocation.ni].campaigns[latestLocation.ci]
+      get().updateCampaign(campaignId, { images: [...(current.images ?? (current.img ? [{ key: `legacy:${current.img}`, url: current.img }] : [])), ...display] })
+      if (editSnapshot !== null) for (const path of uploaded) editUploadedImagePaths.add(path)
+    } catch (error) {
+      await removeStoredImages(uploaded).catch(() => undefined)
+      throw error
+    }
+  },
+  removeCampaignImage: async (campaignId, storagePath) => {
+    const client = get().currentClient()
+    const location = findCampaignLocation(client, campaignId)
+    if (!location) return
+    const campaign = client.stages[location.si].nodes[location.ni].campaigns[location.ci]
+    const images = (campaign.images ?? []).filter((image) => image.storagePath !== storagePath)
+    const nextClient = structuredClone(client)
+    const nextLocation = findCampaignLocation(nextClient, campaignId)!
+    nextClient.stages[nextLocation.si].nodes[nextLocation.ni].campaigns[nextLocation.ci].images = images
+    await persistClient(nextClient)
+    get().updateCampaign(campaignId, { images })
+    if (editSnapshot === null) await removeStoredImages([storagePath])
+  },
+  reorderCampaignImages: (campaignId, storagePaths) => {
+    const client = get().currentClient()
+    const location = findCampaignLocation(client, campaignId)
+    if (!location) return
+    const campaign = client.stages[location.si].nodes[location.ni].campaigns[location.ci]
+    get().updateCampaign(campaignId, { images: reorderImageSubset(campaign.images ?? [], storagePaths) })
+  },
+  moveCampaignOnBoard: (campaignId, boardX, boardY) =>
+    set((s) => withClient(s, (client) => {
+      const location = findCampaignLocation(client, campaignId)
+      if (!location) return
+      const campaign = client.stages[location.si].nodes[location.ni].campaigns[location.ci]
+      campaign.boardX = boardX
+      campaign.boardY = boardY
+    })),
+  moveCampaignTo: (campaignId, x, y, cardW, cardH, trackW, trackH) =>
     set((s) =>
       withClient(s, (c) => {
         const loc = findCampaignLocation(c, campaignId)
         if (!loc) return
         const campaign = c.stages[loc.si].nodes[loc.ni].campaigns[loc.ci]
-        const clamped = clampCardPosition(x, y, cardW, cardH, trackW)
+        const clamped = clampCardPosition(x, y, cardW, cardH, trackW, trackH)
         campaign.x = clamped.x
         campaign.y = clamped.y
         campaign.pos = posFromY(clamped.y, cardH)
       })
     ),
-  moveCampaignToNode: (campaignId, targetNodeId, x, y, cardW, cardH, trackW) =>
+  moveCampaignToNode: (campaignId, targetNodeId, x, y, cardW, cardH, trackW, trackH) =>
     set((s) =>
       withClient(s, (c) => {
         // Detach from current node
@@ -460,7 +720,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         for (const st of c.stages) {
           const targetNode = st.nodes.find((n) => n.id === targetNodeId)
           if (targetNode) {
-            const clamped = clampCardPosition(x, y, cardW, cardH, trackW)
+            const clamped = clampCardPosition(x, y, cardW, cardH, trackW, trackH)
             campaign.x = clamped.x
             campaign.y = clamped.y
             campaign.pos = posFromY(clamped.y, cardH)

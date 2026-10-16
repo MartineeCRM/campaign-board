@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { fetchAllBrazePages, filterBrazeDrafts, hasMartineeTag } from '../_shared/braze-list.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +12,7 @@ interface BrazeCampaign {
   is_active: boolean
   is_archived: boolean
   last_edited: string
+  tags?: string[]
 }
 
 interface BrazeCanvas {
@@ -58,29 +60,50 @@ Deno.serve(async (req) => {
     const baseUrl = creds.rest_api_url.replace(/\/$/, '')
     const headers = { Authorization: `Bearer ${apiKey}` }
 
-    // Fetch campaigns and canvases in parallel (page 0, up to 100 each)
-    const [campaignsRes, canvasesRes] = await Promise.all([
-      fetch(`${baseUrl}/campaigns/list?page=0&include_archived=false&sort_direction=desc`, { headers }),
-      fetch(`${baseUrl}/canvas/list?page=0&include_archived=false&sort_direction=desc`, { headers }),
+    const [allCampaigns, allCanvases] = await Promise.all([
+      fetchAllBrazePages(async (page) => {
+        const res = await fetch(`${baseUrl}/campaigns/list?page=${page}&include_archived=false&sort_direction=desc`, { headers })
+        if (!res.ok) throw new Error(`Braze campaigns/list page ${page}: ${res.status}`)
+        const body = await res.json() as { campaigns?: BrazeCampaign[] }
+        return body.campaigns ?? []
+      }),
+      fetchAllBrazePages(async (page) => {
+        const res = await fetch(`${baseUrl}/canvas/list?page=${page}&include_archived=false&sort_direction=desc`, { headers })
+        if (!res.ok) throw new Error(`Braze canvas/list page ${page}: ${res.status}`)
+        const body = await res.json() as { canvases?: BrazeCanvas[] }
+        return body.canvases ?? []
+      }),
     ])
 
-    if (!campaignsRes.ok) throw new Error(`Braze campaigns/list ${campaignsRes.status}`)
-    if (!canvasesRes.ok) throw new Error(`Braze canvas/list ${canvasesRes.status}`)
+    // The list endpoints do not expose the `draft` flag. Read each candidate's
+    // details and fail the list request if Braze cannot confirm its state.
+    const detailsUrl = (id: string, type: 'campaign' | 'canvas') => {
+      const endpoint = type === 'campaign' ? 'campaigns/details' : 'canvas/details'
+      const queryKey = type === 'campaign' ? 'campaign_id' : 'canvas_id'
+      return `${baseUrl}/${endpoint}?${queryKey}=${encodeURIComponent(id)}`
+    }
 
-    const campaignsBody = await campaignsRes.json() as { campaigns?: BrazeCampaign[]; message?: string }
-    const canvasesBody = await canvasesRes.json() as { canvases?: BrazeCanvas[]; message?: string }
+    const taggedCampaigns = allCampaigns.filter((c) => hasMartineeTag(c.tags))
+    const [publishedCampaigns, publishedCanvases] = await Promise.all([
+      filterBrazeDrafts(taggedCampaigns, (id) => detailsUrl(id, 'campaign'), headers),
+      filterBrazeDrafts(allCanvases, (id) => detailsUrl(id, 'canvas'), headers),
+    ])
 
-    const campaigns = (campaignsBody.campaigns ?? []).map((c) => ({
+    const campaigns = publishedCampaigns.map((c) => ({
       id: c.id,
       name: c.name,
       type: 'campaign' as const,
+      is_active: c.is_active,
+      is_archived: c.is_archived,
       last_edited: c.last_edited,
     }))
 
-    const canvases = (canvasesBody.canvases ?? []).map((c) => ({
+    const canvases = publishedCanvases.map((c) => ({
       id: c.id,
       name: c.name,
       type: 'canvas' as const,
+      is_active: c.is_active,
+      is_archived: c.is_archived,
       last_edited: c.last_edited,
     }))
 

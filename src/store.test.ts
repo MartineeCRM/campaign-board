@@ -1,8 +1,11 @@
 // src/store.test.ts
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+const persistenceMocks = vi.hoisted(() => ({ persistClient: vi.fn(async () => undefined), deleteClientRow: vi.fn(async () => undefined), loadAllClients: vi.fn(async () => []) }))
+vi.mock('./persistence', () => persistenceMocks)
 import { useBoardStore, STAGE_PALETTE, normalizeClient } from './store'
 import { SPINE_Y, TRACK_HEIGHT, TRACK_WIDTH } from './utils/geometry'
 import type { Client } from './types'
+import { supabase } from './supabase'
 
 function fixtureClient(): Client {
   return {
@@ -184,6 +187,23 @@ describe('node actions', () => {
     expect(after[1].id).toBe(newNodeId)
   })
 
+  it('reorders a node by dropping it before or after another node', () => {
+    useBoardStore.getState().addNode('s1')
+    const addedNode = useBoardStore.getState().currentClient().stages[0].nodes[0]
+    useBoardStore.getState().reorderNode(addedNode.id, 'n1', true)
+    expect(useBoardStore.getState().currentClient().stages[0].nodes.map((node) => node.id)).toEqual(['n1', addedNode.id])
+
+    useBoardStore.getState().reorderNode('n1', addedNode.id, true)
+    expect(useBoardStore.getState().currentClient().stages[0].nodes.map((node) => node.id)).toEqual([addedNode.id, 'n1'])
+  })
+
+  it('moves a dropped node into the target stage', () => {
+    useBoardStore.getState().reorderNode('n1', 'n2', true)
+    const stages = useBoardStore.getState().currentClient().stages
+    expect(stages[0].nodes).toHaveLength(0)
+    expect(stages[1].nodes.map((node) => node.id)).toEqual(['n2', 'n1'])
+  })
+
   it('moveNode crosses into the previous stage when moved left past the first node', () => {
     useBoardStore.getState().moveNode('s2', 'n2', -1)
     const stages = useBoardStore.getState().currentClient().stages
@@ -238,6 +258,29 @@ describe('campaign actions', () => {
     expect(campaign.y).toBe(TRACK_HEIGHT - 160)
   })
 
+  it('moves a campaign to free board coordinates without changing its node ownership', () => {
+    const before = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
+    useBoardStore.getState().moveCampaignOnBoard('k1', 1480, 760)
+    const after = useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0]
+    expect(after.boardX).toBe(1480)
+    expect(after.boardY).toBe(760)
+    expect(after.x).toBe(before.x)
+    expect(after.y).toBe(before.y)
+  })
+
+  it('does not import Braze items already on the board or duplicated in one batch', () => {
+    useBoardStore.getState().updateCampaign('k1', { brazeId: 'existing-id', brazeType: 'campaign' })
+    useBoardStore.getState().importBrazeCampaigns('n2', 'top', [
+      { brazeId: 'existing-id', brazeType: 'campaign', name: 'Already on board' },
+      { brazeId: 'new-id', brazeType: 'canvas', name: 'New canvas' },
+      { brazeId: 'new-id', brazeType: 'canvas', name: 'Duplicate in selection' },
+    ])
+
+    const campaigns = useBoardStore.getState().currentClient().stages[1].nodes[0].campaigns
+    expect(campaigns).toHaveLength(1)
+    expect(campaigns[0]).toMatchObject({ brazeId: 'new-id', brazeType: 'canvas', name: 'New canvas' })
+  })
+
   it('deleteCampaign removes the campaign by id', () => {
     useBoardStore.getState().deleteCampaign('k1')
     expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns).toHaveLength(0)
@@ -287,6 +330,64 @@ describe('edit mode snapshot/cancel', () => {
     expect(state.edit).toBe(false)
     expect(state.currentClient().stages).toHaveLength(2)
     expect(state.currentClient().stages[0].name).toBe('Stage 1')
+  })
+
+  it('cancelEdit deletes only newly uploaded image objects', async () => {
+    const remove = vi.fn().mockResolvedValue({ data: [], error: null })
+    const from = vi.spyOn(supabase.storage, 'from').mockImplementation(() => ({ remove } as never))
+    useBoardStore.getState().updateCampaign('k1', { images: [{ key: 'kept', url: 'signed', storagePath: 'k1/kept.png', width: 10, height: 10 }] })
+    useBoardStore.getState().enterEdit()
+    useBoardStore.getState().updateCampaign('k1', { images: [
+      { key: 'kept', url: 'signed', storagePath: 'k1/kept.png', width: 10, height: 10 },
+      { key: 'new', url: 'signed-new', storagePath: 'k1/new.png', width: 10, height: 20 },
+    ] })
+    useBoardStore.getState().cancelEdit()
+    await vi.waitFor(() => expect(from).toHaveBeenCalledWith('campaign-images'))
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(['k1/new.png']))
+    expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0].images).toHaveLength(1)
+    from.mockRestore()
+  })
+
+  it('associates an uploaded Canvas image with the selected message step', async () => {
+    const upload = vi.fn().mockResolvedValue({ data: {}, error: null })
+    const createSignedUrl = vi.fn().mockResolvedValue({ data: { signedUrl: 'https://signed.example/step.png' }, error: null })
+    const from = vi.spyOn(supabase.storage, 'from').mockImplementation(() => ({ upload, createSignedUrl } as never))
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 100, height: 200, close: vi.fn() }))
+    useBoardStore.getState().updateCampaign('k1', { brazeType: 'canvas', canvasSteps: [
+      { id: 'step-1', name: 'Push', channel: 'Push', sent: 0, opens: 0, clicks: 0, engagements: 0, conversionCounts: [0] },
+    ] })
+    try {
+      await useBoardStore.getState().addCampaignImages('k1', [new File(['image'], 'step.png', { type: 'image/png' })], 'step-1')
+      expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0].images?.[0])
+        .toMatchObject({ stepId: 'step-1', width: 100, height: 200 })
+    } finally {
+      from.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('cancelEdit restores a removed stored image without deleting its object', () => {
+    const remove = vi.fn().mockResolvedValue({ data: [], error: null })
+    const from = vi.spyOn(supabase.storage, 'from').mockImplementation(() => ({ remove } as never))
+    const original = { key: 'kept', url: 'signed', storagePath: 'k1/kept.png', width: 10, height: 10 }
+    useBoardStore.getState().updateCampaign('k1', { images: [original] })
+    useBoardStore.getState().enterEdit()
+    useBoardStore.getState().updateCampaign('k1', { images: [] })
+    useBoardStore.getState().cancelEdit()
+    expect(remove).not.toHaveBeenCalled()
+    expect(useBoardStore.getState().currentClient().stages[0].nodes[0].campaigns[0].images).toEqual([original])
+    from.mockRestore()
+  })
+
+  it('confirmEdit removes stored objects that were removed in the edit session', async () => {
+    const remove = vi.fn().mockResolvedValue({ data: [], error: null })
+    const from = vi.spyOn(supabase.storage, 'from').mockImplementation(() => ({ remove } as never))
+    useBoardStore.getState().updateCampaign('k1', { images: [{ key: 'old', url: 'signed', storagePath: 'k1/old.png', width: 10, height: 10 }] })
+    useBoardStore.getState().enterEdit()
+    useBoardStore.getState().updateCampaign('k1', { images: [] })
+    useBoardStore.getState().confirmEdit()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(['k1/old.png']))
+    from.mockRestore()
   })
 
   it('cancelEdit is a harmless no-op if edit mode was never entered', () => {

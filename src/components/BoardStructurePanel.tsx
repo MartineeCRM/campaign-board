@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useBoardStore, STAGE_PALETTE } from '../store'
 import { supabase } from '../supabase'
 import type { LineStyle } from '../types'
+import { brazeItemKey, getImportedBrazeKeys } from '../utils/braze-import'
 
 const LINE_OPTIONS: { value: LineStyle; label: string }[] = [
   { value: 'solid', label: '실선' },
@@ -13,6 +14,7 @@ interface BrazeItem {
   id: string
   name: string
   type: 'campaign' | 'canvas'
+  is_active?: boolean
 }
 
 export default function BoardStructurePanel() {
@@ -26,11 +28,12 @@ export default function BoardStructurePanel() {
   const deleteStage = useBoardStore((s) => s.deleteStage)
   const addNode = useBoardStore((s) => s.addNode)
   const renameNode = useBoardStore((s) => s.renameNode)
+  const reorderNode = useBoardStore((s) => s.reorderNode)
   const setNodeLine = useBoardStore((s) => s.setNodeLine)
   const deleteNode = useBoardStore((s) => s.deleteNode)
   const importBrazeCampaigns = useBoardStore((s) => s.importBrazeCampaigns)
   const confirmEdit = useBoardStore((s) => s.confirmEdit)
-  const cancelEdit = useBoardStore((s) => s.cancelEdit)
+  const importedKeys = getImportedBrazeKeys(client)
 
   // Braze 피커 state
   const [brazeItems, setBrazeItems] = useState<BrazeItem[]>([])
@@ -40,6 +43,7 @@ export default function BoardStructurePanel() {
   const [brazeQuery, setBrazeQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [targetNodeId, setTargetNodeId] = useState<string>('')
+  const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
 
   const selectedStage = client.stages.find((s) => s.id === selectedStageId) ?? client.stages[0] ?? null
 
@@ -70,8 +74,8 @@ export default function BoardStructurePanel() {
       const body = await res.json() as { campaigns?: BrazeItem[]; canvases?: BrazeItem[]; error?: string }
       if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`)
       setBrazeItems([
-        ...(body.campaigns ?? []).map((c) => ({ ...c, type: 'campaign' as const })),
-        ...(body.canvases ?? []).map((c) => ({ ...c, type: 'canvas' as const })),
+        ...(body.campaigns ?? []).map((c) => ({ ...c, type: 'campaign' as const, is_active: c.is_active })),
+        ...(body.canvases ?? []).map((c) => ({ ...c, type: 'canvas' as const, is_active: c.is_active })),
       ])
     } catch (err) {
       setBrazeError(err instanceof Error ? err.message : String(err))
@@ -80,15 +84,17 @@ export default function BoardStructurePanel() {
     }
   }
 
-  function toggleItem(id: string) {
-    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  function toggleItem(item: BrazeItem) {
+    const key = brazeItemKey(item.type, item.id)
+    if (importedKeys.has(key)) return
+    setSelected((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
   }
 
   function handleApply() {
-    if (targetNodeId && selected.size > 0) {
+    if (targetNodeId && newSelectionCount > 0) {
       const toAdd = brazeItems
-        .filter((i) => selected.has(i.id))
-        .map((i) => ({ brazeId: i.id, brazeType: i.type, name: i.name }))
+        .filter((i) => selected.has(brazeItemKey(i.type, i.id)) && !importedKeys.has(brazeItemKey(i.type, i.id)))
+        .map((i) => ({ brazeId: i.id, brazeType: i.type, name: i.name, isActive: i.is_active }))
       importBrazeCampaigns(targetNodeId, 'top', toAdd)
     }
     setSelected(new Set())
@@ -97,12 +103,15 @@ export default function BoardStructurePanel() {
 
   function handleCancel() {
     setSelected(new Set())
-    cancelEdit()
+    confirmEdit()
   }
 
   const filteredItems = brazeItems.filter(
     (i) => i.type === brazeTab && i.name.toLowerCase().includes(brazeQuery.toLowerCase()),
   )
+  const newSelectionCount = brazeItems.filter((item) =>
+    selected.has(brazeItemKey(item.type, item.id)) && !importedKeys.has(brazeItemKey(item.type, item.id)),
+  ).length
 
   if (!selectedStage) return null
 
@@ -181,36 +190,83 @@ export default function BoardStructurePanel() {
           <div style={s.label}>노드 설정</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {selectedStage.nodes.map((node) => (
-              <div key={node.id} style={{ background: '#f8f9fb', borderRadius: 10, padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    <input
-                      value={node.label}
-                      onChange={(e) => renameNode(node.id, { label: e.target.value })}
-                      placeholder="노드 이름"
-                      style={{ ...s.input, fontSize: 13, fontWeight: 600 }}
-                    />
-                    <input
-                      value={node.sub}
-                      onChange={(e) => renameNode(node.id, { sub: e.target.value })}
-                      placeholder="설명"
-                      style={{ ...s.input, fontSize: 12, color: '#4e5968' }}
-                    />
-                  </div>
-                  <button onClick={() => deleteNode(node.id)} style={{ ...s.dangerBtn, flexShrink: 0, marginTop: 2 }}>삭제</button>
-                </div>
-                {/* 서식 */}
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {LINE_OPTIONS.map((opt) => (
-                    <button key={opt.value} onClick={() => setNodeLine(node.id, opt.value)} style={{
-                      flex: 1, fontSize: 11, fontWeight: 700, padding: '5px 0',
-                      border: 0, borderRadius: 6, cursor: 'pointer',
-                      background: node.line === opt.value ? '#191f28' : '#fff',
-                      color: node.line === opt.value ? '#fff' : '#8b95a1',
-                    }}>
-                      {opt.label}
+              <div
+                key={node.id}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  setDragOverNodeId(node.id)
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOverNodeId(null)
+                }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  setDragOverNodeId(null)
+                  const draggedNodeId = event.dataTransfer.getData('text/plain')
+                  if (!draggedNodeId || draggedNodeId === node.id) return
+                  const bounds = event.currentTarget.getBoundingClientRect()
+                  reorderNode(draggedNodeId, node.id, event.clientY >= bounds.top + bounds.height / 2)
+                }}
+                style={{ background: '#f8f9fb', borderRadius: 10, padding: '10px', display: 'flex', gap: 8, outline: dragOverNodeId === node.id ? '2px dashed #3182f6' : '2px solid transparent', outlineOffset: -2 }}
+              >
+                <button
+                  type="button"
+                  draggable
+                  aria-label={`노드 순서 변경: ${node.label}`}
+                  title="드래그해서 노드 순서 변경"
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData('text/plain', node.id)
+                    event.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onDragEnd={() => setDragOverNodeId(null)}
+                  style={{ width: 16, height: 20, flexShrink: 0, padding: 0, border: 0, borderRadius: 6, background: 'transparent', color: '#8b95a1', cursor: 'grab', display: 'grid', placeItems: 'center', alignSelf: 'flex-start', marginTop: 4 }}
+                >
+                  <svg aria-hidden="true" width="10" height="12" viewBox="0 0 16 20" fill="currentColor">
+                    <circle cx="4" cy="3" r="1.5" /><circle cx="12" cy="3" r="1.5" />
+                    <circle cx="4" cy="10" r="1.5" /><circle cx="12" cy="10" r="1.5" />
+                    <circle cx="4" cy="17" r="1.5" /><circle cx="12" cy="17" r="1.5" />
+                  </svg>
+                </button>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <input
+                        value={node.label}
+                        onChange={(e) => renameNode(node.id, { label: e.target.value })}
+                        placeholder="노드 이름"
+                        style={{ ...s.input, fontSize: 13, fontWeight: 600 }}
+                      />
+                      <input
+                        value={node.sub}
+                        onChange={(e) => renameNode(node.id, { sub: e.target.value })}
+                        placeholder="설명"
+                        style={{ ...s.input, fontSize: 12, color: '#4e5968' }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="노드 삭제"
+                      title="노드 삭제"
+                      onClick={() => deleteNode(node.id)}
+                      style={{ width: 24, height: 24, flexShrink: 0, marginTop: 2, padding: 0, border: 0, borderRadius: 7, color: '#8b95a1', background: 'transparent', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}
+                    >
+                      ×
                     </button>
-                  ))}
+                  </div>
+                  {/* 서식 */}
+                  <div style={{ display: 'flex', gap: 4, width: '100%', minWidth: 0, paddingRight: 30, boxSizing: 'border-box' }}>
+                    {LINE_OPTIONS.map((opt) => (
+                      <button key={opt.value} onClick={() => setNodeLine(node.id, opt.value)} style={{
+                        flex: 1, minWidth: 0, boxSizing: 'border-box', fontSize: 11, fontWeight: 700, padding: '5px 0',
+                        border: 0, borderRadius: 6, cursor: 'pointer',
+                        background: node.line === opt.value ? '#191f28' : '#fff',
+                        color: node.line === opt.value ? '#fff' : '#8b95a1',
+                      }}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             ))}
@@ -263,23 +319,29 @@ export default function BoardStructurePanel() {
             {!brazeLoading && !brazeError && filteredItems.length === 0 && (
               <div style={{ fontSize: 12, color: '#8b95a1', textAlign: 'center', padding: '16px 0' }}>항목 없음</div>
             )}
-            {filteredItems.map((item) => (
+            {filteredItems.map((item) => {
+              const key = brazeItemKey(item.type, item.id)
+              const alreadyAdded = importedKeys.has(key)
+              return (
               <label key={item.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 8, cursor: 'pointer',
-                background: selected.has(item.id) ? '#f0f5ff' : 'transparent',
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 8, cursor: alreadyAdded ? 'default' : 'pointer',
+                background: alreadyAdded ? '#f8f9fb' : selected.has(key) ? '#f0f5ff' : 'transparent', opacity: alreadyAdded ? 0.7 : 1,
               }}>
                 <input
                   type="checkbox"
-                  checked={selected.has(item.id)}
-                  onChange={() => toggleItem(item.id)}
-                  style={{ width: 14, height: 14, accentColor: '#3182f6', flexShrink: 0, cursor: 'pointer' }}
+                  checked={alreadyAdded || selected.has(key)}
+                  disabled={alreadyAdded}
+                  onChange={() => toggleItem(item)}
+                  style={{ width: 14, height: 14, accentColor: '#3182f6', flexShrink: 0, cursor: alreadyAdded ? 'default' : 'pointer' }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#191f28', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
                   <div style={{ fontSize: 10, color: '#b0b8c1', marginTop: 1, fontFamily: 'ui-monospace,Menlo,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.id}</div>
                 </div>
+                {alreadyAdded && <span style={{ fontSize: 10, color: '#8b95a1', flexShrink: 0 }}>이미 추가됨</span>}
               </label>
-            ))}
+              )
+            })}
           </div>
 
         </div>
@@ -297,7 +359,7 @@ export default function BoardStructurePanel() {
           onClick={handleApply}
           style={{ flex: 2, fontSize: 13, fontWeight: 700, padding: '11px 0', border: 0, borderRadius: 10, cursor: 'pointer', background: '#191f28', color: '#fff' }}
         >
-          {selected.size > 0 ? `적용 (${selected.size}개 추가)` : '적용'}
+          {newSelectionCount > 0 ? `적용 (${newSelectionCount}개 추가)` : '적용'}
         </button>
       </div>
     </div>

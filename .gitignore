@@ -8,3 +8,5 @@ vite.config.d.ts
 .env.*
 !.env.example
 supabase/.temp
+.vercel
+.env*

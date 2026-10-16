@@ -1,14 +1,15 @@
 import { useBoardStore } from '../store'
-import { SPINE_Y, TRACK_HEIGHT } from '../utils/geometry'
+import { boardTrackHeight, SPINE_Y } from '../utils/geometry'
 import type { Stage } from '../types'
 
 export default function StageColumn({ stage }: { stage: Stage }) {
   const edit = useBoardStore((s) => s.edit)
   const renameStage = useBoardStore((s) => s.renameStage)
+  const trackHeight = useBoardStore((s) => boardTrackHeight([s.currentClient()], s.open, s.cardHeights))
 
   return (
     <div style={{ flex: '0 0 auto', minWidth: 110, padding: '0 14px', boxSizing: 'border-box' }}>
-      <div style={{ position: 'relative', height: TRACK_HEIGHT }}>
+      <div style={{ position: 'relative', height: trackHeight }}>
         <div style={{ position: 'absolute', left: -14, right: -14, top: SPINE_Y, borderTop: `3px solid ${stage.color}` }} />
         <div
           style={{

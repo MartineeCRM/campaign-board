@@ -18,6 +18,11 @@ button {
   font-family: inherit;
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 @keyframes livePulse {
   0% {
     box-shadow: 0 0 0 0 rgba(26, 154, 74, 0.55);

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { useBoardStore } from '../store'
 import type { CardPos } from '../types'
+import { brazeItemKey, getImportedBrazeKeys } from '../utils/braze-import'
 
 interface BrazeItem {
   id: string
@@ -18,7 +19,9 @@ interface Props {
 
 export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
   const clientId = useBoardStore((s) => s.clientId)
+  const client = useBoardStore((s) => s.currentClient())
   const importBrazeCampaigns = useBoardStore((s) => s.importBrazeCampaigns)
+  const importedKeys = getImportedBrazeKeys(client)
 
   const [items, setItems] = useState<BrazeItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,19 +61,24 @@ export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
   const filtered = items.filter(
     (i) => i.type === tab && i.name.toLowerCase().includes(query.toLowerCase()),
   )
+  const newSelectionCount = items.filter((item) =>
+    selected.has(brazeItemKey(item.type, item.id)) && !importedKeys.has(brazeItemKey(item.type, item.id)),
+  ).length
 
-  function toggle(id: string) {
+  function toggle(item: BrazeItem) {
+    if (importedKeys.has(brazeItemKey(item.type, item.id))) return
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const key = brazeItemKey(item.type, item.id)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
 
   function handleAdd() {
     const toAdd = items
-      .filter((i) => selected.has(i.id))
+      .filter((i) => selected.has(brazeItemKey(i.type, i.id)) && !importedKeys.has(brazeItemKey(i.type, i.id)))
       .map((i) => ({ brazeId: i.id, brazeType: i.type, name: i.name }))
     importBrazeCampaigns(nodeId, pos, toAdd)
     onClose()
@@ -168,18 +176,22 @@ export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
               {query ? '검색 결과 없음' : `${typeLabel[tab]} 없음`}
             </div>
           )}
-          {filtered.map((item) => (
+          {filtered.map((item) => {
+            const key = brazeItemKey(item.type, item.id)
+            const alreadyAdded = importedKeys.has(key)
+            return (
             <div
               key={item.id}
-              onClick={() => toggle(item.id)}
+              onClick={() => toggle(item)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
                 padding: '10px 8px',
                 borderRadius: 8,
-                cursor: 'pointer',
-                background: selected.has(item.id) ? '#f0f5ff' : 'transparent',
+                cursor: alreadyAdded ? 'default' : 'pointer',
+                opacity: alreadyAdded ? 0.55 : 1,
+                background: alreadyAdded ? '#f8f9fb' : selected.has(key) ? '#f0f5ff' : 'transparent',
                 marginBottom: 2,
               }}
             >
@@ -188,8 +200,8 @@ export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
                   width: 18,
                   height: 18,
                   borderRadius: 5,
-                  border: selected.has(item.id) ? '2px solid #3182f6' : '2px solid #d1d6db',
-                  background: selected.has(item.id) ? '#3182f6' : '#fff',
+                  border: alreadyAdded ? '2px solid #aab2bc' : selected.has(key) ? '2px solid #3182f6' : '2px solid #d1d6db',
+                  background: alreadyAdded ? '#aab2bc' : selected.has(key) ? '#3182f6' : '#fff',
                   flexShrink: 0,
                   display: 'flex',
                   alignItems: 'center',
@@ -199,7 +211,7 @@ export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
                   fontWeight: 700,
                 }}
               >
-                {selected.has(item.id) ? '✓' : ''}
+                {alreadyAdded || selected.has(key) ? '✓' : ''}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: '#191f28', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -207,14 +219,16 @@ export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
                 </div>
                 <div style={{ fontSize: 11, color: '#8b95a1', marginTop: 1 }}>{item.id}</div>
               </div>
+              {alreadyAdded && <div style={{ fontSize: 10, color: '#8b95a1', flexShrink: 0 }}>이미 추가됨</div>}
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Footer */}
         <div style={{ padding: '12px 24px 20px', borderTop: '1px solid #f2f4f6', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 12, color: '#8b95a1' }}>
-            {selected.size > 0 ? `${selected.size}개 선택됨` : '선택하세요'}
+            {newSelectionCount > 0 ? `${newSelectionCount}개 선택됨` : '선택하세요'}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -225,19 +239,19 @@ export default function BrazeCampaignPicker({ nodeId, pos, onClose }: Props) {
             </button>
             <button
               onClick={handleAdd}
-              disabled={selected.size === 0}
+              disabled={newSelectionCount === 0}
               style={{
                 fontSize: 13,
                 fontWeight: 700,
                 padding: '9px 18px',
                 border: 0,
                 borderRadius: 10,
-                background: selected.size > 0 ? '#191f28' : '#e5e8eb',
-                color: selected.size > 0 ? '#fff' : '#8b95a1',
-                cursor: selected.size > 0 ? 'pointer' : 'not-allowed',
+                background: newSelectionCount > 0 ? '#191f28' : '#e5e8eb',
+                color: newSelectionCount > 0 ? '#fff' : '#8b95a1',
+                cursor: newSelectionCount > 0 ? 'pointer' : 'not-allowed',
               }}
             >
-              {selected.size > 0 ? `${selected.size}개 추가` : '추가'}
+              {newSelectionCount > 0 ? `${newSelectionCount}개 추가` : '추가'}
             </button>
           </div>
         </div>
